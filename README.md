@@ -1,0 +1,1 @@
+Proyectazo con el mejor equipo de programadores de microcontroladores. Con apróximadamente 20 años acumulados de experencia, este equipo se compromete a dar el mejor proyecto de satélites de todo el universo.
