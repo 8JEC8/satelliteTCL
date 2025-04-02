@@ -12,19 +12,18 @@ connection_active = False  # Flag, True=Conn activa, False=Conn desactivada
 conn = None  # Será global
 server_socket = None  # Será global
 
-# Open log file for writing
+# Abrir log
 log_file = open("ap_log.txt", "w")
 
 def log_message(message):
-    """Logs a message with a timestamp (MicroPython compatible)."""
     t = time.localtime()
-    timestamp = "[04/01/2025]" + "[{:02d}:{:02d}:{:02d}]".format(*t[3:6])  # Format manually
+    timestamp = "[04/01/2025]" + "[{:02d}:{:02d}:{:02d}]".format(*t[3:6])  # Fecha manual, T en 00:00:00 (2 Digitos en tiempo)
 
     formatted_message = f"{timestamp} {message}"
 
     sys.stdout.write(formatted_message + "\n")
     log_file.write(formatted_message + "\n")
-    log_file.flush()  # Ensure immediate writing
+    log_file.flush()  # Escribir inmediatamente
 
 def receive_messages():
     while True:
