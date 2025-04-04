@@ -11,14 +11,15 @@ password = ""
 is_sending = 0 # Flag; 0=False, 1=True, 2=RSSI, 3=LED ON, 4=LED OFF, 5=Temp, 6=Potencia, 7=Giroscopio
 LED = Pin(23, Pin.OUT) #LED, Pin D23
 
+######################## Funciones del Programa
 def print_message(is_sending, message):
     if is_sending==1:
-        sys.stdout.write("    Satélite (STA): " + message)  # Print mandando
+        sys.stdout.write("Satélite (STA): " + message)  # Print mandando
     elif is_sending in [2, 3, 4]:
         sys.stdout.write(message)
         client_socket.send(message.encode())
     elif is_sending==0:
-        sys.stdout.write("    Est. Terrestre (AP): " + message)  # Print recibiendo
+        sys.stdout.write("Est. Terrestre (AP): " + message)  # Print recibiendo
         ack="M_RECIBIDO -> " + message
         client_socket.send(ack.encode())
     sys.stdout.write("\n")
@@ -84,8 +85,7 @@ print("Conectado")
 print("IP:", sta.ifconfig()[0]) # Print IP
 sys.stdout.write("\n")
 
-######################## MAIN.PY
-
+######################## Configuración de Socket
 # Cliente (TCP)
 server_ip = "192.168.4.1"  # IP de AP
 port = 1234 #Puerto de AP
@@ -94,7 +94,8 @@ port = 1234 #Puerto de AP
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # AF_INET: Internet Protocol version 4; SOCK_STREAM: TCP
 client_socket.connect((server_ip, port)) 
 
-_thread.start_new_thread(receive_messages, ()) # Mandar y recibir simultaneamente
+######################## Recepción y Envío Simultaneo
+_thread.start_new_thread(receive_messages, ()) # Recibir simultaneamente
 
 while True:
     is_sending = 1 # Enviando mensaje
@@ -102,6 +103,7 @@ while True:
     if message=="":
       print("TERMINAL_ERROR: Mensaje vacío")
       continue
+    client_socket.send(message.encode())  # Enviar mensaje
     client_socket.send(message.encode())  # Send the message
     
 # Cerrar socket
