@@ -12,12 +12,13 @@ connection_active = False  # Flag, True=Conn activa, False=Conn desactivada
 conn = None  # Será global
 server_socket = None  # Será global
 
-# Abrir log
+# Abrir/Crear log, sobreescribir
 log_file = open("ap_log.txt", "w")
 
+######################## Funciones del Programa
 def log_message(message):
     t = time.localtime()
-    timestamp = "[04/01/2025]" + "[{:02d}:{:02d}:{:02d}]".format(*t[3:6])  # Fecha manual, T en 00:00:00 (2 Digitos en tiempo)
+    timestamp = "[04/04/2025]" + "[{:02d}:{:02d}:{:02d}]".format(*t[3:6])  # Fecha manual, T en 00:00:00 (2 Digitos en tiempo)
 
     formatted_message = f"{timestamp} {message}"
 
@@ -50,7 +51,7 @@ def connect_socket():
     global conn, server_socket, connection_active
 
     if connection_active:
-        log_message("    La conexión ya existe")
+        log_message("La conexión ya existe")
         return
 
     if server_socket:
@@ -60,13 +61,13 @@ def connect_socket():
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind(('0.0.0.0', 1234))
     server_socket.listen(1)
-    log_message("    AP (You: Est. Terrestre) Esperando a STA (Satélite)...")
+    log_message("AP (You: Est. Terrestre) Esperando a STA (Satélite)...")
   
     conn, addr = server_socket.accept()
     connection_active = True
     log_message(f"Conectado a {addr}")
 
-    _thread.start_new_thread(receive_messages, ())
+    _thread.start_new_thread(receive_messages, ()) #Al conectar socket, recepción simultanea
 
 def disconnect_socket():
     global conn, connection_active, server_socket
@@ -74,9 +75,9 @@ def disconnect_socket():
     if conn:
         conn.close()
         conn = None
-        log_message("    Socket Cerrado: Est. Terrestre (AP)")
+        log_message("Socket Cerrado: Est. Terrestre (AP)")
     else:
-        log_message("    La conexión ya está cerrada")
+        log_message("La conexión ya está cerrada")
     
     if server_socket:
         server_socket.close()
@@ -96,12 +97,11 @@ log_message(f"IP Address: {ap.ifconfig()[0]}")
 log_message("LISTA DE COMANDOS: command.list")
 
 ######################## Envio de Mensajes
-
 while True:
     is_sending = 1  # Enviando mensaje
     message = input("")
     if message == "":
-        log_message("    TERMINAL_ERROR: Mensaje vacío")
+        log_message("TERMINAL_ERROR: Mensaje vacío")
         continue
     elif message == "command.list":
         log_message("'sat.CON'     : Conectar con STA")
@@ -118,8 +118,11 @@ while True:
         continue
 
     if not connection_active:
-        log_message("    ¡NO CONEXIÓN! El mensaje no fue enviado.")
+        log_message("¡NO CONEXIÓN! El mensaje no fue enviado.")
         continue  # Reiniciar while True
+          
+    conn.send(message.encode())
+    log_message(f"Est. Terrestre (AP): {message}")
           
     conn.send(message.encode())
     log_message(f"Est. Terrestre (AP): {message}")
