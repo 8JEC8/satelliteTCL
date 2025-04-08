@@ -1,21 +1,90 @@
-from machine import Pin
+from machine import Pin, I2C
 import network
 import socket
 import time
 import _thread
 import sys
+import dht
 
 ssid = "ESP Tamales con Limón"
 password = ""
 
-is_sending = 0 # Flag; 0=False, 1=True, 2=RSSI, 3=LED ON, 4=LED OFF, 5=Temp, 6=Potencia, 7=Giroscopio
+is_sending = 0 # Flag; 0=False, 1=True, 2=RSSI, 3=LED ON, 4=LED OFF, 5=Temp, 6=Giroscopio, 7=Potencia
 LED = Pin(23, Pin.OUT) #LED, Pin D23
+DHT = dht.DHT11(Pin(18, Pin.IN, Pin.PULL_UP)) #DHT, Pin D18
+i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000, timeout=1000)
+
+
+######################## Clase de MPU 6050
+class MPU6050:
+    def __init__(self, i2c, addr=0x68):
+        self.i2c = i2c
+        self.addr = addr
+        
+        # Despertar MPU6050
+        self.i2c.writeto_mem(self.addr, 0x6B, b'\x00')  # 0x6B, despertarlo
+
+        # Rango de Acelerómetro
+        self.i2c.writeto_mem(self.addr, 0x1C, b'\x00')  # ±2g (0x00)
+
+        # Rango de Giroscopio
+        self.i2c.writeto_mem(self.addr, 0x1B, b'\x00')  # ±250°/s (0x00))
+    
+    def get_raw_accel(self):
+        try:
+            data = self.i2c.readfrom_mem(self.addr, 0x3B, 6)
+            ax = int.from_bytes(data[0:2], 'big')
+            ay = int.from_bytes(data[2:4], 'big')
+            az = int.from_bytes(data[4:6], 'big')
+
+            # Convertir a valores negativos
+            if ax > 32767:
+                ax -= 65536
+            if ay > 32767:
+                ay -= 65536
+            if az > 32767:
+                az -= 65536
+
+            # Convertir a unidades reales (g), +-2g: dividir por 16384
+            ax = ax / 16384.0
+            ay = ay / 16384.0
+            az = az / 16384.0
+            return ax, ay, az
+        except Exception as e:
+            print("Error leyendo acelerómetro:", e)
+            return 0, 0, 0
+
+    def get_raw_gyro(self):
+        try:
+            data = self.i2c.readfrom_mem(self.addr, 0x43, 6)
+            gx = int.from_bytes(data[0:2], 'big')
+            gy = int.from_bytes(data[2:4], 'big')
+            gz = int.from_bytes(data[4:6], 'big')
+
+            # Convertir a valores negativos
+            if gx > 32767:
+                gx -= 65536
+            if gy > 32767:
+                gy -= 65536
+            if gz > 32767:
+                gz -= 65536
+
+            # Convertir a unidades reales (°/s), +-250 grados/s: dividir por 131
+            gx = gx / 131.0  
+            gy = gy / 131.0
+            gz = gz / 131.0
+            return gx, gy, gz
+        except Exception as e:
+            print("Error leyendo Giroscopio:", e)
+            return 0, 0, 0
+
+mpu = MPU6050(i2c)
 
 ######################## Funciones del Programa
 def print_message(is_sending, message):
     if is_sending==1:
         sys.stdout.write("Satélite (STA): " + message)  # Print mandando
-    elif is_sending in [2, 3, 4]:
+    elif is_sending in [2, 3, 4, 5, 6]:
         sys.stdout.write(message)
         client_socket.send(message.encode())
     elif is_sending==0:
@@ -56,6 +125,26 @@ def receive_messages():
                   LED.value(0)
                   data="RES_COM -> LED OFF"
                   print_message(is_sending=4, message=data)
+            elif data=="sat.TEMP":
+                print_message(is_sending=0, message=data)
+                time.sleep(2)
+                try:
+                  DHT.measure()
+                  temp = DHT.temperature()  # Temperatura en °C
+                  hum = DHT.humidity()      # Humedad en %
+                  data="RES_COM -> " + "Temperatura: {}°C".format(temp) + "; Humedad: {}%".format(hum)
+                  print_message(is_sending=5, message=data)
+                except OSError as e:
+                  data=(f"Lectura de DHT11 falló: {e}")
+                  print_message(is_sending=5, message=data)
+            elif data=="sat.GYRO":
+                print_message(is_sending=0, message=data)
+                ax, ay, az = mpu.get_raw_accel()
+                gx, gy, gz = mpu.get_raw_gyro()
+                data="RES_COM:\n" + \
+                     "ACC -> X: {:.4f} g, Y: {:.4f} g, Z: {:.4f} g\n".format(ax, ay, az) + \
+                     "GYR -> X: {:.4f} °/s, Y: {:.4f} °/s, Z: {:.4f} °/s".format(gx, gy, gz)
+                print_message(is_sending=6, message=data)
           
             else:
               # Print mensaje AP al recibir
@@ -91,8 +180,17 @@ server_ip = "192.168.4.1"  # IP de AP
 port = 1234 #Puerto de AP
 
 # Socket de Servidor
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # AF_INET: Internet Protocol version 4; SOCK_STREAM: TCP
-client_socket.connect((server_ip, port)) 
+connected = False
+while not connected:
+    try:
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((server_ip, port))
+        connected = True
+    except OSError as e:
+        print("AP aún no está escuchando el socket. Reintentando en 3 segundos...")
+        time.sleep(3)
+
+print("Socket conectado con AP correctamente.")
 
 ######################## Recepción y Envío Simultaneo
 _thread.start_new_thread(receive_messages, ()) # Recibir simultaneamente
@@ -104,7 +202,3 @@ while True:
       print("TERMINAL_ERROR: Mensaje vacío")
       continue
     client_socket.send(message.encode())  # Enviar mensaje
-    client_socket.send(message.encode())  # Send the message
-    
-# Cerrar socket
-client_socket.close()
