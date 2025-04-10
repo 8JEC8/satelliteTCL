@@ -30,5 +30,7 @@ class Led:
     def toggle(self):
         if self.active:
             self.off()
+            self.active = False
         else:
             self.on()
+            self.active = True

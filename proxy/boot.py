@@ -9,4 +9,5 @@ import led
 micropython.alloc_emergency_exception_buf(100) # reserve memory for call back error stacks
 
 nif = ni.Nif()
-nif.setup_st()
+nif.setup_sta('rasp', 's3rv1c10$')
+nif.setup_ap()
