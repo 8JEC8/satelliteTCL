@@ -16,7 +16,7 @@ log_file = open("ap_log.txt", "w") # Abrir log
 
 def log_message(message):
     t = time.localtime()
-    timestamp = "[06/04/2025]" + "[{:02d}:{:02d}:{:02d}]".format(*t[3:6])  # Fecha manual, T en 00:00:00 (2 Digitos en tiempo)
+    timestamp = "[08/04/2025]" + "[{:02d}:{:02d}:{:02d}]".format(*t[3:6])  # Fecha manual, T en 00:00:00 (2 Digitos en tiempo)
     formatted_message = f"{timestamp} {message}"
     sys.stdout.write(formatted_message + "\n")
     log_file.write(formatted_message + "\n")
@@ -101,6 +101,7 @@ while True:
         log_message("'sat.LED OFF' : Apagar LED")
         log_message("'sat.TEMP'    : Temperatura y Humedad")
         log_message("'sat.GYRO'    : Acelerómetro y Giroscopio")
+        log_message("'sat.POW'     : Potencia (V,I,W)")
         continue
 
     if not connection_active:
