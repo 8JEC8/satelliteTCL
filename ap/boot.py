@@ -1,26 +1,16 @@
 import socket
 import _thread
 import sys
-import network
-import time
-
-ssid = "ESP Tamales con Limón"
-password = ""
+import network_interface as ni
+import logger as logs
 
 is_sending = 0  # Flag; 0=False, 1=True
 connection_active = False  # Flag, True=Conn activa, False=Conn desactivada
 conn = None  # Será global
 server_socket = None  # Será global
 
-log_file = open("ap_log.txt", "w") # Abrir log
-
-def log_message(message):
-    t = time.localtime()
-    timestamp = "[08/04/2025]" + "[{:02d}:{:02d}:{:02d}]".format(*t[3:6])  # Fecha manual, T en 00:00:00 (2 Digitos en tiempo)
-    formatted_message = f"{timestamp} {message}"
-    sys.stdout.write(formatted_message + "\n")
-    log_file.write(formatted_message + "\n")
-    log_file.flush()  # Escribir inmediatamente
+nif = ni.Nif()
+log = logs.Logger('Main', 'main.log')
 
 def receive_messages():
     global conn, connection_active
@@ -33,14 +23,14 @@ def receive_messages():
             data = conn.recv(1024).decode()
             if not data:
                 break
-            log_message(f"Satélite (STA): {data}")
+            log.info(f"Satélite (STA): {data}")
 
         except OSError:
-            log_message("Desconexión detectada. Reiniciando socket...")
+            log.info("Desconexión detectada. Reiniciando socket...")
             break
 
         except Exception as e:
-            log_message(f"Error recibiendo mensaje de Satélite (STA): {e}")
+            log.info(f"Error recibiendo mensaje de Satélite (STA): {e}")
             break
 
     # Reset de conn, intentar conexión otra vez
@@ -64,29 +54,20 @@ def connection_loop():
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind(('0.0.0.0', 1234))
     server_socket.listen(1)
-    log_message("AP (You: Est. Terrestre) Esperando a STA (Satélite)...")
+    log.info("AP (You: Est. Terrestre) Esperando a STA (Satélite)...")
 
     conn, addr = server_socket.accept()
     connection_active = True
-    log_message(f"Conectado a {addr}")
-    log_message("LISTA DE COMANDOS: command.list")
+    log.info(f"Conectado a {addr}")
+    log.info("LISTA DE COMANDOS: command.list")
     sys.stdout.write("\n")
     _thread.start_new_thread(receive_messages, ())
 
-######################## Setup de AP
-ap = network.WLAN(network.AP_IF)  # Crear AP
-ap.config(essid=ssid, password=password)
-ap.active(True)  # Activar
 
-sys.stdout.write("\n\n")
-log_message("AP activado")
-log_message(f"SSID: {ssid}")
-log_message(f"IP Address: {ap.ifconfig()[0]}")
-
-connection_loop()  # Iniciar escuchando la primera conexión
+nif.setup_ap()
+connection_loop()
 
 ######################## Envio de Mensajes
-
 while True:
     is_sending = 1  # Enviando mensaje
     message = input("")
