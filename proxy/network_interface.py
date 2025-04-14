@@ -1,6 +1,11 @@
 import network
 import machine
 import led
+import ntptime
+
+import logger as logs
+
+log = logs.Logger('WiFi','wifi.log')
 
 # [N]etwork [i]nter[f]ace
 class Nif:
@@ -11,6 +16,8 @@ class Nif:
             self.led.green()
             self.led.on()
             self.wificheck()
+            ntptime.settime() 
+            log.info("Connection recovered.")
             return
 
         if self.sta.status() < 1000:
@@ -25,6 +32,7 @@ class Nif:
         if self.sta.status() != network.STAT_GOT_IP:
             t.deinit() 
             self.wifirecover()
+            log.info("Connection lost.")
             return
 
     def wificheck(self):
