@@ -2,7 +2,7 @@ import network
 import machine
 import led
 import ntptime
-
+import json
 import logger as logs
 
 log = logs.Logger('WiFi','wifi.log')
@@ -42,6 +42,7 @@ class Nif:
         self.tim1.init(mode = machine.Timer.PERIODIC, freq = 2, callback = self.wifirecover_)
 
     def __init__(self):
+        self.keys = json.load(open('keys.json'))
         self.tim1 = machine.Timer(1)
         self.led = led.Led()
         self.ap = network.WLAN(network.AP_IF)
@@ -49,11 +50,12 @@ class Nif:
 
     def setup_ap(self):
         self.ap.active(True)
+        self.ap.config(essid=self.keys['ap']['ssid'], password=self.keys['ap']['key'])
 
-    def setup_sta(self, ssid, pwd):
+    def setup_sta(self):
         self.sta.active(False) # assert inactive
         self.sta.active(True)
-        self.sta.connect(ssid, pwd) 
+        self.sta.connect(self.keys['station']['ssid'], self.keys['station']['key']) 
         self.wifirecover()
 
 '''
