@@ -50,7 +50,7 @@ class Nif:
 
     def setup_ap(self):
         self.ap.active(True)
-        self.ap.config(essid=self.keys['ap']['ssid'], password=self.keys['ap']['key'])
+        self.ap.config(essid = self.keys['ap']['ssid'], password = self.keys['ap']['key'], security = 3 if len(self.keys['ap']['key']) >= 8 else 0)
 
     def setup_sta(self):
         self.sta.active(False) # assert inactive
