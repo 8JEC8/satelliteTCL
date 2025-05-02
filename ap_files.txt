@@ -1,0 +1,6 @@
+./lib/led.py
+./lib/ntptime.py
+./lib/logger.py
+./lib/network_interface.py
+./proxy/boot.py
+./proxy/keys.json
