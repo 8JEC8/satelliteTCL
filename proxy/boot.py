@@ -12,4 +12,4 @@ nif = ni.Nif()
 nif.setup_sta()
 nif.setup_ap()
 
-socket = sock.Socker(8081)
+socket = sock.Socker(port=8081)

@@ -5,9 +5,11 @@
 import micropython
 import network_interface as ni
 import led
+import sock
 
 micropython.alloc_emergency_exception_buf(100) # reserve memory for call back error stacks
 
 nif = ni.Nif()
 nif.setup_sta()
-#nif.setup_ap()
+
+socket = sock.Socker(clientOpts=('192.168.4.1', 8081))

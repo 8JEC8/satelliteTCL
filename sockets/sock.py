@@ -4,7 +4,7 @@ socklog = logger.Logger('TCP-Sock', 'sockets.log')
 
 # Socket declaration, it should be non-blocking
 class Socker:
-    def __init__(self, port):
+    def __init__(self, port=None, clientOpts=None): # clientOpts is a tuple of (address[string], port[int])
         self.active = False
 
         self.buffer = collections.deque([], 50, 1)
@@ -12,35 +12,75 @@ class Socker:
 
         # Maybe do a security buffer queue? And pop as we receive acks
 
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.bind(('', port))
-        self.server.listen(1)
-        self.server.setblocking(False)
+        self.code = 0
+       
+        self.server = None
+        self.peersocket = None 
+        self.clientOpts = clientOpts
 
         self.connector = select.poll()
-        self.peer = select.poll() # 
+        self.peer = select.poll()
 
-        self.connector.register(self.server)
+        if clientOpts:
+            socklog.info('Initializing socket connector in client mode.')
+            self.resetPeerLink()
+        else:
+            socklog.info('Initializing socket connector in server mode.')
+            self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server.bind(('', port))
+            self.server.listen(1)
+            self.server.setblocking(False)
+            socklog.debug(f'Socket server bound to 0.0.0.0:{port}')
 
-        self.tim2 = machine.Timer(2) # auto-update
-        self.tim2.init(mode = machine.Timer.PERIODIC, freq = 5, callback = self._refresh)
-        # 20 hz better
+            self.connector.register(self.server)
 
-        socklog.debug(f'Socket server bound to 0.0.0.0:{port}')
+        # auto-updater 
+        self.tim2 = machine.Timer(2)
+        self.tim2.init(mode = machine.Timer.PERIODIC, freq = 5, callback = self._refresh) # better be 20hz
+
 
     def _refresh(self, t):
-        if not self.peer.poll(1):
-            waiting = self.connector.poll(1)
-            if waiting and waiting[0][1] & select.POLLIN:
-                client, address = waiting[0][0].accept()
-                client.setblocking(False)
-                socklog.info(f'Socket request accepted for {address}.')
+        if not self.peer.poll(1): # nothing writable, nothing errored
+            if self.server:
+                waiting = self.connector.poll(1)
+                if waiting and waiting[0][1] & select.POLLIN:
+                    client, address = waiting[0][0].accept()
+                    client.setblocking(False)
+                    socklog.info(f'Socket request accepted for {address}.')
 
-                self.peer.register(client)
-
-                self.active = True
+                    self.peer.register(client)
+            else:
+                self.refreshPeerLink()
         else:
             self.poll()
+    
+    def refreshPeerLink(self):
+        if not self.connect_ex(self.peersocket, self.clientOpts):
+            self.resetPeerLink()
+            # Unpolling/closing not necessary as it has been done by self.poll(), or never was polled/opened
+        
+    def resetPeerLink(self):
+        self.peersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.peersocket.setblocking(False)
+        self.code = 0 # let connect_ex resart
+        socklog.info('Peer link reset. (Client mode)')
+
+    def connect_ex(self, s, address): 
+        if self.code == 0 or self.code == 119:
+            socklog.info('Connection attempt launched')
+            try:
+                s.connect(address)
+            except OSError as ex:
+                self.code = ex.errno
+                socklog.info(f'Status code: {self.code}')
+        elif not self.code == 127:
+            socklog.warn(f'Connection failed with code {self.code}')
+            return False
+        else:
+            self.peer.register(s)
+            self.acive(True)
+            socklog.warn(f'Connection accepted. Socket registered')
+        return True
 
     def closeSocket(self, s):
         try:
@@ -50,6 +90,7 @@ class Socker:
             socklog.warn('An exception occurred while closing socket.')
             pass
         self.peer.unregister(s)
+        self.code = 0 # Allow reconnection
         socklog.info('Socket closed. Peer disconnection.')
         self.active = False
 
@@ -59,14 +100,15 @@ class Socker:
 
     acks = 0 # Should ideally be zero
 
-    def poll(self): # Only triggered on demand
+    def poll(self):
         for s in self.peer.ipoll(1):
-            if s[1] > 5: # it is in error. close it and clear its references
+            if s[1] & select.POLLHUP or s[1] & select.POLLERR: # close socket and clear its references
                 self.closeSocket(s[0])
             if s[1] & select.POLLIN:
                 self.save_buffer(s[0])
             if s[1] & select.POLLOUT:
                 self.flush_buffer(s[0])
+                self.active = True
 
     def flush_buffer(self, s): # for outputs
         try:
