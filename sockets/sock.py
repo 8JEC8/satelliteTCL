@@ -63,23 +63,23 @@ class Socker:
         self.peersocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.peersocket.setblocking(False)
         self.code = 0 # let connect_ex resart
-        socklog.info('Peer link reset. (Client mode)')
+        socklog.debug('Peer socket reset.')
 
     def connect_ex(self, s, address): 
         if self.code == 0 or self.code == 119:
-            socklog.info('Connection attempt launched')
+            socklog.debug('Peer connection attempt initiated.')
             try:
                 s.connect(address)
             except OSError as ex:
                 self.code = ex.errno
-                socklog.info(f'Status code: {self.code}')
+                socklog.debug(f'Peer connection attempt status: {self.code}')
         elif not self.code == 127:
-            socklog.warn(f'Connection failed with code {self.code}')
+            socklog.debug(f'Peer connection attempt failed: {self.code}')
             return False
         else:
             self.peer.register(s)
-            self.acive(True)
-            socklog.warn(f'Connection accepted. Socket registered')
+            self.active = True
+            socklog.info('Peer connected.')
         return True
 
     def closeSocket(self, s):
@@ -91,7 +91,7 @@ class Socker:
             pass
         self.peer.unregister(s)
         self.code = 0 # Allow reconnection
-        socklog.info('Socket closed. Peer disconnection.')
+        socklog.info(f'Connection closed for {s}.')
         self.active = False
 
     def shutdown(self):
@@ -126,7 +126,13 @@ class Socker:
 
     def save_buffer(self, s): # asserted read
         msg = bytearray() 
-        raw = s.recv(1024) # asserted to end in special char
+
+        try:
+            raw = s.recv(1024) # asserted to end in special char
+        except OSError as ex:
+            socklog.error(f'Connection is in an unrecoverable state: {ex}')
+            self.closeSocket(s)
+            return
 
         if raw == b'':
             socklog.info('Socket closure requested by peer.')
