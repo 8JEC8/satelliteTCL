@@ -16,7 +16,9 @@ class Nif:
             self.led.green()
             self.led.on()
             self.wificheck()
-            ntptime.settime() 
+            if self.wanAccess and not self.timeSync:
+                ntptime.settime() 
+                self.timeSync = True # handle exception
             log.info("Connection recovered.")
             return
 
@@ -41,12 +43,14 @@ class Nif:
     def wifirecover(self):
         self.tim1.init(mode = machine.Timer.PERIODIC, freq = 2, callback = self.wifirecover_)
 
-    def __init__(self):
+    def __init__(self, wanAccess=False): 
         self.keys = json.load(open('keys.json'))
         self.tim1 = machine.Timer(1)
         self.led = led.Led()
         self.ap = network.WLAN(network.AP_IF)
         self.sta = network.WLAN(network.STA_IF)
+        self.wanAccess = wanAccess
+        self.timeSync = False
 
     def setup_ap(self):
         self.ap.active(True)
