@@ -8,7 +8,7 @@ import sock
 
 micropython.alloc_emergency_exception_buf(100) # reserve memory for call back error stacks
 
-nif = ni.Nif()
+nif = ni.Nif(wanAccess=True)
 nif.setup_sta()
 nif.setup_ap()
 
