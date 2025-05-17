@@ -12,4 +12,4 @@ nif = ni.Nif(wanAccess=True)
 nif.setup_sta()
 nif.setup_ap()
 
-socket = sock.Socker(port=8081)
+socket = sock.Socker(serverPort=8081)
