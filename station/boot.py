@@ -12,4 +12,7 @@ micropython.alloc_emergency_exception_buf(100) # reserve memory for call back er
 nif = ni.Nif()
 nif.setup_sta()
 
-socket = sock.Socker(clientOpts=('192.168.4.1', 8081))
+socket = sock.Socker()
+import peer_tcp
+pi = peer_tcp.Peer(('192.168.4.1', 8081), "me", 0, None)
+socket.peers["me"] = pi
