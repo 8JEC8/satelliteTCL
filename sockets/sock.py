@@ -1,7 +1,7 @@
 from bidict import BiMap
 from logger import Logger
+from peer_tcp import Peer
 import machine
-import peer_tcp
 import socket
 import select
 
@@ -43,7 +43,7 @@ class Socker:
                 client.setblocking(False)
                 self.log.info(f'Socket request accepted for {address}.')
 
-                self.anons[client.fileno()] = peer_tcp.Peer(None, "anon", -2, client)
+                self.anons[client.fileno()] = Peer(None, "anon", Peer.ANON, client)
                 self.poller.register(client)
 
         self.refreshOutbound()
@@ -52,29 +52,28 @@ class Socker:
     def refreshOutbound(self):
         for peer in self.peers.values():
             if peer.outbound:
-                if peer.status != 444 and not self.connect_ex(peer):
-                    peer.reset(0)
+                if peer.status != Peer.GOOD and not self.connect_ex(peer):
+                    peer.reset()
                     self.log.debug(f'Socket reset for peer "{peer.id}".')
                     # Unpolling/closing not necessary as it has been done by self.poll(), or never was polled/opened
 
     def connect_ex(self, peer):
-        if peer.status == 0 or peer.status == 119:
+        if peer.canConnect():
             self.log.debug(f'Connection attempt initiated to peer "{peer.id}".')
             try:
                 peer.socket.connect(peer.host)
             except OSError as ex:
                 peer.status = ex.errno
                 self.log.debug(f'Connection attempt to peer "{peer.id}" status: {peer.status}.')
-        elif peer.status != 127 and peer.status != 120:
+        elif not peer.isFailed():
+            peer.status = Peer.GOOD
+            peer.addAuth()
+            self.poller.register(peer.socket)
+            self.nameToFd.put(peer.id, peer.socket.fileno())
+            self.log.info(f'Connected to peer "{peer.id}".')
+        else:
             self.log.debug(f'Connection attempt failed to peer "{peer.id}": {peer.status}.')
             return False
-        else:
-            self.poller.register(peer.socket)
-            self.peers[peer.id].status = 444
-            self.peers[peer.id] = peer
-            self.nameToFd.put(peer.id, peer.socket.fileno())
-            peer.addAuth()
-            self.log.info(f'Connected to peer "{peer.id}".')
         return True
 
     def closeSocket(self, peer):
@@ -87,14 +86,14 @@ class Socker:
         self.log.info(f'Connection closed for {peer.id}.')
         self.log.debug(f'Connection removal from poller')
 
-        if peer.waitingAuth:  # did not authenticate
+        if peer.waitingAuth:
             del self.anons[fileNo]
             return
 
         if not peer.outbound:
             del self.peers[peer.id]
         else:
-            peer.status = 0
+            peer.reset()
 
         self.nameToFd.delByKey(peer.id)  # Remove old fd reference
 
@@ -124,14 +123,14 @@ class Socker:
         try:
             msg = peer.outbuff.popleft()
             peer.socket.sendall(msg.encode())
-            if msg != '\x06\n':
+            if msg != Peer.ACK_MESSAGE:
                 peer.acks += 1
                 self.log.debug(f'Expecting acknowledgement from "{peer.id}".')
         except:  # IndexError or OSError9
             pass
 
     def ack(self, peer):
-        peer.outbuff.append('\x06\n')
+        peer.outbuff.append(Peer.ACK_MESSAGE)
         self.log.debug(f'Acknowledgement sent to "{peer.id}".')
 
     def saveInbuff(self, peer):  # asserted read
@@ -147,9 +146,9 @@ class Socker:
             self.closeSocket(peer)
             return
 
-        for line in raw.split(b'\n')[:-1]:
-            self.log.info(f'a line: {line}')
-            if peer.waitingAuth and line.startswith('\x02'):  # asserted to be in anon list
+        for line in raw.split(Peer.ENDL_SYMBOL.encode())[:-1]:
+            self.log.debug(f'From {peer.id}: {line}')
+            if peer.waitingAuth and line.startswith(Peer.HEAD_SYMBOL):  # asserted to be in anon list
                 peerId = line[1:].decode()
                 self.log.info(f'Peer identified with name: "{peerId}"')
                 peer.waitingAuth = False
@@ -158,7 +157,7 @@ class Socker:
                 self.peers[peerId] = peer
                 del self.anons[peer.socket.fileno()]
                 self.ack(peer)
-            elif line.startswith('\x06'):
+            elif line.startswith(Peer.ACK_SYMBOL):
                 peer.acks -= 1
                 self.log.debug(f'Acknowledgement received for "{peer.id}".')
             else:
