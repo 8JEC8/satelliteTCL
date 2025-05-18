@@ -1,175 +1,170 @@
-import bidict, logger, machine, peer_tcp, socket, select
+from bidict import BiMap
+from logger import Logger
+import machine
+import peer_tcp
+import socket
+import select
 
-socklog = logger.Logger('TCP-Sock', 'sockets.log')
-
-# Socket declaration, it should be non-blocking
+# TODO: Enums, peerlist class, sequential acks, and configurable public identity on self
+# Non-blocking inbound/outbound socket handler
 class Socker:
-    def __init__(self, serverPort=None): # clientOpts is a tuple of (address[string], port[int])
+    def __init__(self, serverPort=None):
+        self.log = Logger('TCP-Sock', 'sockets.log')
+        self.peers = {}
+        self.nameToFd = BiMap()
+        self.anons = {}
 
-        self.peers = { }
-        self.nameToFd = bidict.BiMap()
-        self.anons = { }
-        
         self.server = None
 
         self.connector = select.poll()
         self.poller = select.poll()
 
         if serverPort:
-            socklog.info('Initializing socket connector in server mode.')
+            self.log.info('Enabling socket server.')
             self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server.bind(('', serverPort))
             self.server.listen(1)
             self.server.setblocking(False)
-            socklog.debug(f'Socket server bound to 0.0.0.0:{serverPort}')
+            self.log.debug(f'Socket server bound to 0.0.0.0:{serverPort}.')
 
             self.connector.register(self.server)
-            
-        socklog.info('Initializing socket connector in client mode.')
-        
-        # auto-updater 
-        self.tim2 = machine.Timer(2)
-        self.tim2.init(mode = machine.Timer.PERIODIC, freq = 5, callback = self._refresh) # better be 20hz
 
+        self.log.info('Enabling peer handler.')
+
+        # auto-updater
+        self.tim2 = machine.Timer(2)
+        self.tim2.init(mode=machine.Timer.PERIODIC, freq=5, callback=self._refresh)
 
     def _refresh(self, t):
-        if not self.poller.poll(1):
-            if self.server: # can both act as server and client
-                waiting = self.connector.poll(1)
-                if waiting and waiting[0][1] & select.POLLIN:
-                    client, address = waiting[0][0].accept()
-                    client.setblocking(False)
-                    socklog.info(f'Socket request accepted for {address}.')
+        if self.server:
+            waiting = self.connector.poll(1)
+            if waiting and waiting[0][1] & select.POLLIN:
+                client, address = waiting[0][0].accept()
+                client.setblocking(False)
+                self.log.info(f'Socket request accepted for {address}.')
 
-                    self.anons[client.fileno()] = peer_tcp.Peer(None, "anon", -2, client)
-                    self.poller.register(client) # authenticate anons first
+                self.anons[client.fileno()] = peer_tcp.Peer(None, "anon", -2, client)
+                self.poller.register(client)
 
-            self.refreshPeerLinks()
-        else:
-            self.poll()
-    
-    def refreshPeerLinks(self):
-        for k in self.peers:
-            if not self.connect_ex(self.peers[k]):
-                self.resetPeerLink(self.peers[k])
-                # Unpolling/closing not necessary as it has been done by self.poll(), or never was polled/opened
-        
-    def resetPeerLink(self, peer):
-        peer.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        peer.socket.setblocking(False)
-        peer.status = 0 # let connect_ex resart
-        socklog.debug(f'Socket reset for peer "{peer.id}".')
+        self.refreshOutbound()
+        self.poll()
 
-    def connect_ex(self, peer): 
+    def refreshOutbound(self):
+        for peer in self.peers.values():
+            if peer.outbound:
+                if peer.status != 444 and not self.connect_ex(peer):
+                    peer.reset(0)
+                    self.log.debug(f'Socket reset for peer "{peer.id}".')
+                    # Unpolling/closing not necessary as it has been done by self.poll(), or never was polled/opened
+
+    def connect_ex(self, peer):
         if peer.status == 0 or peer.status == 119:
-            socklog.debug(f'Connection attempt initiated to peer "{peer.id}".')
+            self.log.debug(f'Connection attempt initiated to peer "{peer.id}".')
             try:
                 peer.socket.connect(peer.host)
             except OSError as ex:
                 peer.status = ex.errno
-                socklog.debug(f'Connection attempt to peer "{peer.id}" status: {peer.status}.')
-        elif not peer.status == 127:
-            socklog.debug(f'Connection attempt failed to peer "{peer.id}": {peer.status}.')
+                self.log.debug(f'Connection attempt to peer "{peer.id}" status: {peer.status}.')
+        elif peer.status != 127 and peer.status != 120:
+            self.log.debug(f'Connection attempt failed to peer "{peer.id}": {peer.status}.')
             return False
         else:
             self.poller.register(peer.socket)
+            self.peers[peer.id].status = 444
             self.peers[peer.id] = peer
             self.nameToFd.put(peer.id, peer.socket.fileno())
-            socklog.info(f'Connected to peer "{peer.id}".')
+            peer.addAuth()
+            self.log.info(f'Connected to peer "{peer.id}".')
         return True
 
     def closeSocket(self, peer):
+        fileNo = peer.socket.fileno()
         try:
             peer.socket.close()
         except:
-            socklog.warn(f'An exception occurred while closing socket for peer {peer.id}.')
+            self.log.warn(f'An exception occurred while closing socket for peer {peer.id}.')
             pass
-        self.poller.unregister(peer.socket)
-        socklog.info(f'Connection closed for {s}.')
+        self.log.info(f'Connection closed for {peer.id}.')
+        self.log.debug(f'Connection removal from poller')
 
-        if peer.status == -2: # Never authenticated
-            del anon[peer.socket.fileno()]
+        if peer.waitingAuth:  # did not authenticate
+            del self.anons[fileNo]
             return
-        elif peer.status == -1:
-            del self.peers[peer.id] # Expecting peer-side reconnection to us (server)
+
+        if not peer.outbound:
+            del self.peers[peer.id]
         else:
-            peer.status = 0 # Allow reconnection
-        self.nameToFd.delByKey(peer.id) # Remove old fd reference
+            peer.status = 0
+
+        self.nameToFd.delByKey(peer.id)  # Remove old fd reference
 
     def shutdown(self):
         self.tim2.deinit()
-        socklog.info('Socket service shut down.')
+        self.log.info('Socket service shut down.')
 
     def poll(self):
         for s in self.poller.ipoll(1):
             peer = None
             if self.nameToFd.hasVal(s[0].fileno()):
                 peer = self.peers[self.nameToFd.reverse[s[0].fileno()]]
+            elif s[0].fileno() == -1:
+                self.poller.unregister(s[0])
             else:
                 peer = self.anons[s[0].fileno()]
-            
-            if s[1] & select.POLLHUP or s[1] & select.POLLERR: # close socket and clear its references
-                self.closeSocket(peer)
-                socklog.error('Socket closed from errored state.')
-            if s[1] & select.POLLIN:
-                self.save_buffer(peer)
-            if s[1] & select.POLLOUT:
-                self.flush_buffer(peer)
 
-    def flush_buffer(self, peer): # for outputs
+            if s[1] & select.POLLHUP or s[1] & select.POLLERR:  # close socket and clear its references
+                self.closeSocket(peer)
+                self.log.error(f'Socket closed from errored state for "{peer.id}".')
+            if s[1] & select.POLLIN:
+                self.saveInbuff(peer)
+            if s[1] & select.POLLOUT:
+                self.flushOutbuff(peer)
+
+    def flushOutbuff(self, peer):  # for outputs
         try:
             msg = peer.outbuff.popleft()
-            peer.socket.sendall( msg.encode() )
-            if msg != '\x06':
-                self.acks += 1
-                socklog.debug('Expecting message acknowledgement')
-        except IndexError:
+            peer.socket.sendall(msg.encode())
+            if msg != '\x06\n':
+                peer.acks += 1
+                self.log.debug(f'Expecting acknowledgement from "{peer.id}".')
+        except:  # IndexError or OSError9
             pass
 
     def ack(self, peer):
-        peer.outbuff.append('\x06')
-        socklog.debug(f'Acknowledgement sent to {peer.id}.')
+        peer.outbuff.append('\x06\n')
+        self.log.debug(f'Acknowledgement sent to "{peer.id}".')
 
-    def save_buffer(self, peer): # asserted read
-        msg = bytearray() 
-
+    def saveInbuff(self, peer):  # asserted read
         try:
-            raw = peer.socket.recv(1024) # asserted to end in special char
+            raw = peer.socket.recv(4096)  # asserted to end in special char
         except OSError as ex:
-            socklog.error(f'Connection is in an unrecoverable state: {ex}')
+            self.log.error(f'Connection for {peer.id} is in an unrecoverable state: {ex}')
             self.closeSocket(peer)
             return
 
         if raw == b'':
-            socklog.info('Socket closure requested by peer.')
+            self.log.info(f'Socket closure requested by peer "{peer.id}".')
             self.closeSocket(peer)
             return
 
-        for char in raw:
-            if char == 10: # ascii LF 
-                try:
-                    peer.inbuff.append(msg.decode())
-                    socklog.debug(f'Message appended to input buffer ({msg.decode()}.')
-                    ack(peer)
-                except:
-                    socklog.error(f'Inbound message dropped. Queue full. ({msg.decode()})')
-                msg = bytearray()
-            elif char == 6: # ascii ACK 
+        for line in raw.split(b'\n')[:-1]:
+            self.log.info(f'a line: {line}')
+            if peer.waitingAuth and line.startswith('\x02'):  # asserted to be in anon list
+                peerId = line[1:].decode()
+                self.log.info(f'Peer identified with name: "{peerId}"')
+                peer.waitingAuth = False
+                peer.id = peerId
+                self.nameToFd.put(peerId, peer.socket.fileno())
+                self.peers[peerId] = peer
+                del self.anons[peer.socket.fileno()]
+                self.ack(peer)
+            elif line.startswith('\x06'):
                 peer.acks -= 1
-                socklog.debug(f'Acknowledgement received.')
+                self.log.debug(f'Acknowledgement received for "{peer.id}".')
             else:
-                msg.extend(char.to_bytes(1))
-        
-    def readline(self, peer):
-        line = ''
-        try:
-            line = peer.inbuff.popleft()
-        except IndexError:
-            pass
-        return line
-
-    def sendline(self, peer): 
-        try:
-            self.outbuff.append(msg + '\n')
-        except IndexError:
-            socklog.warn('Socket outbound message dropped. Queue full.')
+                try:
+                    peer.inbuff.append(line.decode())
+                    self.log.debug(f'Message appended to input buffer: {line.decode()}.')
+                    self.ack(peer)
+                except:
+                    self.log.error(f'Inbound message dropped. Queue full. ({line.decode()})')

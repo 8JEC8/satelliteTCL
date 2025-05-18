@@ -18,7 +18,7 @@ class Logger:
         self.__print(message, 'WARN')
 
     def debug(self, message):
-        if False:
+        if True:
             self.__print(message, 'DEBUG')
 
     def error(self, message):
