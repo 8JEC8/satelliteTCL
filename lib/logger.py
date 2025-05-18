@@ -1,5 +1,6 @@
 import time
 
+
 class Logger:
     def __init__(self, name, filedir):
         self.file = open(filedir, "w")
@@ -18,7 +19,7 @@ class Logger:
         self.__print(message, 'WARN')
 
     def debug(self, message):
-        if True:
+        if False:
             self.__print(message, 'DEBUG')
 
     def error(self, message):
