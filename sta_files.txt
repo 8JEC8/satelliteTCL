@@ -7,3 +7,5 @@
 ./lib/network_interface.py
 ./station/boot.py
 ./station/keys.json
+./sockets/sock.py
+./sockets/peer_tcp.py
