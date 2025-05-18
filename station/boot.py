@@ -14,5 +14,7 @@ nif.setup_sta()
 
 socket = sock.Socker()
 import peer_tcp
-pi = peer_tcp.Peer(('192.168.4.1', 8081), "me", 0, None)
+pi = peer_tcp.Peer(('192.168.4.1', 8081), "me", 0, None, outbound=True)
 socket.peers["me"] = pi
+pi2 = peer_tcp.Peer(('192.168.4.1', 8081), "johnson", 0, None, outbound=True)
+socket.peers["johnson"] = pi2
