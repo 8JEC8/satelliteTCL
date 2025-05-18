@@ -103,11 +103,11 @@ class Socker:
 
     def poll(self):
         for s in self.poller.ipoll(1):
-            peer = None
             if self.nameToFd.hasVal(s[0].fileno()):
                 peer = self.peers[self.nameToFd.reverse[s[0].fileno()]]
             elif s[0].fileno() == -1:
                 self.poller.unregister(s[0])
+                return
             else:
                 peer = self.anons[s[0].fileno()]
 
