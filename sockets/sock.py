@@ -5,6 +5,7 @@ import machine
 import socket
 import select
 
+
 # TODO: Enums, peerlist class, sequential acks, and configurable public identity on self
 # Non-blocking inbound/outbound socket handler
 class Socker:
