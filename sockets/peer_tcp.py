@@ -1,5 +1,6 @@
 import collections
 import socket
+import json
 
 
 class Peer:
@@ -9,8 +10,10 @@ class Peer:
 
     ACK_SYMBOL = '\x06'
     HEAD_SYMBOL = '\x02'
-    ENDL_SYMBOL = '\n'
-    ACK_MESSAGE = ACK_SYMBOL + ENDL_SYMBOL
+    ENDL_SYMBOL = '\x1c'
+    ACK_MESSAGE = ACK_SYMBOL # keep to minimum size of a single byte
+
+    DEFAULT_OUTPUT = json.loads('{}')
 
     def __init__(self, host, id, status, sckt, outbound=False):
         self.host = host  # tuple
@@ -20,6 +23,7 @@ class Peer:
         self.inbuff = collections.deque([], 50, 1)
         self.outbound = outbound
         self.waitingAuth = False
+        self.dangle = ''
         self.acks = 0
 
         if sckt is None:
@@ -32,12 +36,18 @@ class Peer:
             self.waitingAuth = True
 
     def readline(self):
-        line = ''
+        instruction = Peer.DEFAULT_OUTPUT
         try:
             line = self.inbuff.popleft()
+            instruction = json.loads(self.dangle + line)
         except IndexError:
             pass
-        return line
+        except ValueError:
+            if self.dangle != '':
+                self.dangle = ''
+            else: # we trust the sendee to have sent a perfectly formatted mess
+                self.dangle = line
+        return instruction
 
     def sendline(self, msg):
         try:
@@ -52,7 +62,7 @@ class Peer:
 
     def addAuth(self):
         if self.outbound:
-            self.outbuff.appendleft(f'\x02{self.id}\n')
+            self.outbuff.appendleft(f'{Peer.HEAD_SYMBOL}{self.id}{Peer.ENDL_SYMBOL}')
 
     def canConnect(self):
         if self.status == Peer.READY_TO_CONNECT or self.status == 119:

@@ -2,6 +2,7 @@
 #import esp
 #esp.osdebug(None)
 
+from commander import Commander
 import micropython
 import network_interface as ni
 import sock
@@ -13,3 +14,5 @@ nif.setup_sta()
 nif.setup_ap()
 
 socket = sock.Socker(serverPort=8081)
+commands = Commander(socket)
+commands.masters.append('me')

@@ -2,19 +2,19 @@
 #import esp
 #esp.osdebug(None)
 
+from peer_tcp import Peer
+from sock import Socker
 import micropython
 import network_interface as ni
 import led
-import sock
 
 micropython.alloc_emergency_exception_buf(100) # reserve memory for call back error stacks
 
 nif = ni.Nif()
 nif.setup_sta()
 
-socket = sock.Socker()
-import peer_tcp
-pi = peer_tcp.Peer(('192.168.4.1', 8081), "me", 0, None, outbound=True)
+socket = Socker()
+pi = Peer(('192.168.4.1', 8081), "me", 0, None, outbound=True)
 socket.peers["me"] = pi
-pi2 = peer_tcp.Peer(('192.168.4.1', 8081), "johnson", 0, None, outbound=True)
+pi2 = Peer(('192.168.4.1', 8081), "johnson", 0, None, outbound=True)
 socket.peers["johnson"] = pi2
