@@ -1,11 +1,4 @@
-./lib/bno08x.py
-./lib/led.py
-./lib/mpu6050.py
-./lib/ntptime.py
-./lib/ina219.py
-./lib/logger.py
-./lib/network_interface.py
 ./station/boot.py
-./station/keys.json
 ./sockets/sock.py
 ./sockets/peer_tcp.py
+./lib/commander.py

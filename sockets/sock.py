@@ -147,9 +147,10 @@ class Socker:
             self.closeSocket(peer)
             return
 
-        for line in raw.split(Peer.ENDL_SYMBOL.encode())[:-1]:
+        for line in raw.split(Peer.ENDL_SYMBOL.encode()):
             self.log.debug(f'From {peer.id}: {line}')
             if peer.waitingAuth and line.startswith(Peer.HEAD_SYMBOL):  # asserted to be in anon list
+                # auth message must be sent in a single tcp pakcet to avoid cutoffs
                 peerId = line[1:].decode()
                 self.log.info(f'Peer identified with name: "{peerId}"')
                 peer.waitingAuth = False
@@ -161,6 +162,8 @@ class Socker:
             elif line.startswith(Peer.ACK_SYMBOL):
                 peer.acks -= 1
                 self.log.debug(f'Acknowledgement received for "{peer.id}".')
+            elif line == b'':
+                pass
             else:
                 try:
                     peer.inbuff.append(line.decode())
