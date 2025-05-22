@@ -1,4 +1,7 @@
-import base64
+#
+#   UNIX VERSION
+#
+from base64 import b64encode, b64decode
 import json
 import math
 import os
@@ -52,7 +55,7 @@ class Commander:
         if obj['cmd'] == 'acceptFile':
             self.acceptFile(obj, caller)
         elif obj['cmd'] == 'reqFile':
-            self._readFromDisk(fid, caller)
+            _thread.start_new_thread(self._readFromDisk, (fid, caller))
             self.sendFile(obj, caller)
 
     def acceptFile(self, obj, caller):
@@ -63,14 +66,15 @@ class Commander:
         fin = obj['fin']
         if seq == 1:
             self.files[fid] = bytearray(lng)
-        self.files[fid][(seq - 1) * Commander.CHUNK_SIZE:seq * Commander.CHUNK_SIZE] = base64.b64decode(obj['dat'])
+        self.files[fid][(seq - 1) * Commander.CHUNK_SIZE:seq * Commander.CHUNK_SIZE] = b64decode(obj['dat'])
         if fin == 1:
             # wrap up and save to disk
+            #_thread.start_new_thread(self._saveToDisk, (fid,))
             self._saveToDisk(fid)
-            #self._saveToDisk(fid)
 
     def sendFile(self, destination, fid): # assuming peer exists
         print('Started file transmission')
+        #_thread.start_new_thread(self._readFromDisk, (fid, destination))
         self._readFromDisk(fid, destination)
             
     def _saveToDisk(self, fid):
@@ -94,7 +98,7 @@ class Commander:
 
             for i in range(1, upperbound + 1):
                 instrucObj.opts['seq'] = i
-                instrucObj.opts['dat'] = base64.b64encode(self.files[fid][(i - 1) * Commander.CHUNK_SIZE:i * Commander.CHUNK_SIZE])
+                instrucObj.opts['dat'] = b64encode(self.files[fid][(i - 1) * Commander.CHUNK_SIZE:i * Commander.CHUNK_SIZE]).decode('ascii')
                 if i == upperbound:
                     instrucObj.opts['fin'] = 1
                 self.socker.peers[caller].sendline(json.dumps(instrucObj.opts))
