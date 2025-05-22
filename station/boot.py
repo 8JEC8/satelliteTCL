@@ -14,7 +14,5 @@ nif = ni.Nif()
 nif.setup_sta()
 
 socket = Socker()
-pi = Peer(('192.168.4.1', 8081), "me", 0, None, outbound=True)
-socket.peers["me"] = pi
-pi2 = Peer(('192.168.4.1', 8081), "johnson", 0, None, outbound=True)
-socket.peers["johnson"] = pi2
+Peer.DEFAULT_EXT_ID = 'sputnik'  # our identity
+socket.peers["earth"] = Peer(('192.168.4.1', 8081), "earth", 0, None, outbound=True)
