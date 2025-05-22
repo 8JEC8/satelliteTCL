@@ -8,10 +8,10 @@ class Peer:
     ANON = -2
     READY_TO_CONNECT = 0
 
-    ACK_SYMBOL = '\x06'
+    ACK_SYMBOL = b'\x06'
     HEAD_SYMBOL = '\x02'
     ENDL_SYMBOL = '\x1c'
-    ACK_MESSAGE = ACK_SYMBOL # keep to minimum size of a single byte
+    ACK_MESSAGE = ACK_SYMBOL.decode('ascii')
 
     DEFAULT_EXT_ID = 'machine'
     DEFAULT_OUTPUT = json.loads('{}')
