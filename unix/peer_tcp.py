@@ -8,17 +8,18 @@ class Peer:
     ANON = -2
     READY_TO_CONNECT = 0
 
-    ACK_SYMBOL = '\x06'
+    ACK_SYMBOL = b'\x06'
     HEAD_SYMBOL = '\x02'
     ENDL_SYMBOL = '\x1c'
     ACK_MESSAGE = ACK_SYMBOL # keep to minimum size of a single byte
 
+    DEFAULT_EXT_ID = 'machine'
     DEFAULT_OUTPUT = json.loads('{}')
 
     def __init__(self, host, id, status, sckt, outbound=False):
         self.host = host  # tuple
         self.id = id  # string
-        self.netName = 'machine'
+        self.externalId = Peer.DEFAULT_EXT_ID
         self.status = status  # exclusive to outbound connections and anons
         self.outbuff = collections.deque([], 50)
         self.inbuff = collections.deque([], 50)
@@ -36,9 +37,8 @@ class Peer:
         if status == Peer.ANON:
             self.waitingAuth = True
 
-    def setNetname(self, netName):
-        self.netName = netName
-        return self
+    def setExternalId(self, externalId):
+        self.externalId = externalId
 
     def readline(self):
         instruction = Peer.DEFAULT_OUTPUT
@@ -56,7 +56,7 @@ class Peer:
 
     def sendline(self, msg):
         try:
-            self.outbuff.append(msg + '\n')
+            self.outbuff.append(msg + Peer.ENDL_SYMBOL)
         except IndexError:
             pass
 
@@ -67,7 +67,7 @@ class Peer:
 
     def addAuth(self):
         if self.outbound:
-            self.outbuff.appendleft(f'{Peer.HEAD_SYMBOL}{self.netName}{Peer.ENDL_SYMBOL}')
+            self.outbuff.appendleft(f'{Peer.HEAD_SYMBOL}{self.externalId}{Peer.ENDL_SYMBOL}')
 
     def canConnect(self):
         if self.status == Peer.READY_TO_CONNECT or self.status == 119:

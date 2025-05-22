@@ -5,6 +5,9 @@ import socket
 import select
 import time, threading
 
+
+# TODO: Enums, peerlist class, sequential acks
+# Non-blocking inbound/outbound socket handler
 class Socker:
     def __init__(self, serverPort=None):
         self.log = Logger('TCP-Sock', 'sockets.log')
@@ -29,8 +32,8 @@ class Socker:
 
         self.log.info('Enabling peer handler.')
 
+        # auto-updater
         self._refresh()
-
 
     def _refresh(self):
         if self.server:
@@ -103,7 +106,7 @@ class Socker:
         for s in self.poller.poll(1):
             if self.nameToFd.hasVal(s[0]):
                 peer = self.peers[self.nameToFd.reverse[s[0]]]
-            elif s[0].fileno() == -1:
+            elif s[0] == -1:
                 self.poller.unregister(s[0])
                 return
             else:
@@ -156,7 +159,7 @@ class Socker:
                 self.peers[peerId] = peer
                 del self.anons[peer.socket.fileno()]
                 self.ack(peer)
-            elif line.startswith(Peer.ACK_SYMBOL.encode()):
+            elif line.startswith(Peer.ACK_SYMBOL):
                 peer.acks -= 1
                 self.log.debug(f'Acknowledgement received for "{peer.id}".')
             elif line == b'':
