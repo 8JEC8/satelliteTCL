@@ -74,9 +74,12 @@ class Commander:
     def sendFile(self, destination, fid): # assuming peer exists
         print('Started file transmission')
         _thread.start_new_thread(self._readFromDisk, (fid, destination))
+
+    #def sendMessage(self, destination, message): # max size of 512 bytes, bigger should be sent as file
+        #  create
             
     def _saveToDisk(self, fid):
-        with open(fid, 'w') as f:
+        with open(fid, 'wb') as f:
             f.write(self.files[fid])
         del self.files[fid]
 
