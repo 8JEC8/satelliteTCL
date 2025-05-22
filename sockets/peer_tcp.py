@@ -56,7 +56,7 @@ class Peer:
 
     def sendline(self, msg):
         try:
-            self.outbuff.append(msg + '\n')
+            self.outbuff.append(msg + Peer.ENDL_SYMBOL)
         except IndexError:
             pass
 
