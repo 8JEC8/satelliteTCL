@@ -11,7 +11,7 @@ class Peer:
     ACK_SYMBOL = b'\x06'
     HEAD_SYMBOL = '\x02'
     ENDL_SYMBOL = '\x1c'
-    ACK_MESSAGE = ACK_SYMBOL # keep to minimum size of a single byte
+    ACK_MESSAGE = ACK_SYMBOL.decode('ascii') # keep to minimum size of a single byte
 
     DEFAULT_EXT_ID = 'machine'
     DEFAULT_OUTPUT = json.loads('{}')
