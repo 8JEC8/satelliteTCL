@@ -5,9 +5,9 @@ import ntptime
 import json
 import logger as logs
 
-log = logs.Logger('WiFi','wifi.log')
+log = logs.Logger('WiFi', 'wifi.log')
 
-# [N]etwork [i]nter[f]ace
+
 class Nif:
 
     def wifirecover_(self, t):
@@ -17,33 +17,39 @@ class Nif:
             self.led.on()
             self.wificheck()
             if self.wanAccess and not self.timeSync:
-                ntptime.settime() 
-                self.timeSync = True # handle exception
+                ntptime.settime()
+                self.timeSync = True  # handle exception
             log.info("Connection recovered.")
             return
 
         if self.sta.status() < 1000:
             self.led.red()
             self.led.toggle()
-            #return
+            # return
         else:
             self.led.amber()
             self.led.toggle()
 
     def wificheck_(self, t):
         if self.sta.status() != network.STAT_GOT_IP:
-            t.deinit() 
+            t.deinit()
             self.wifirecover()
             log.info("Connection lost.")
             return
 
     def wificheck(self):
-        self.tim1.init(mode = machine.Timer.PERIODIC, freq = 0.5, callback = self.wificheck_)
+        self.tim1.init(
+                       mode=machine.Timer.PERIODIC,
+                       freq=0.5,
+                       callback=self.wificheck_)
 
     def wifirecover(self):
-        self.tim1.init(mode = machine.Timer.PERIODIC, freq = 2, callback = self.wifirecover_)
+        self.tim1.init(
+                       mode=machine.Timer.PERIODIC,
+                       freq=2,
+                       callback=self.wifirecover_)
 
-    def __init__(self, wanAccess=False): 
+    def __init__(self, wanAccess=False):
         self.keys = json.load(open('keys.json'))
         self.tim1 = machine.Timer(1)
         self.led = led.Led()
@@ -54,13 +60,19 @@ class Nif:
 
     def setup_ap(self):
         self.ap.active(True)
-        self.ap.config(essid = self.keys['ap']['ssid'], password = self.keys['ap']['key'], security = 3 if len(self.keys['ap']['key']) >= 8 else 0)
+        self.ap.config(
+                       essid=self.keys['ap']['ssid'],
+                       password=self.keys['ap']['key'],
+                       security=3 if len(self.keys['ap']['key']) >= 8 else 0)
 
     def setup_sta(self):
-        self.sta.active(False) # assert inactive
+        self.sta.active(False)  # assert inactive
         self.sta.active(True)
-        self.sta.connect(self.keys['station']['ssid'], self.keys['station']['key']) 
+        self.sta.connect(
+            self.keys['station']['ssid'],
+            self.keys['station']['key'])
         self.wifirecover()
+
 
 '''
 docs.micropython.org/en/v1.24.0/library/network.WLAN.html
