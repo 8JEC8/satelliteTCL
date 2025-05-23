@@ -4,10 +4,16 @@ import math
 import os
 
 
-class Command:
+class Command:  # TODO: Style and readabilty
     def __init__(self):
-        # nothing
         self.opts = {}
+
+    def ofKindStatsReply(self):
+        self.opts['cmd'] = 'acceptStatus'
+        self.opts['ssi'] = 0  # db
+        self.opts['tmp'] = (32, 69)  # celsius, humidity
+        self.opts['gyr'] = (44, 90, 101)  # x, y, z
+        self.opts['pwr'] = (5, 0.5)  # volt, amp
 
     def ofKindAcceptFile(self, filename, binarysize):
         self.opts['seq'] = 1
@@ -57,6 +63,10 @@ class Commander:
         elif obj['cmd'] == 'reqFile':
             self._readFromDisk(fid, caller)
             self.sendFile(obj, caller)
+        elif obj['cmd'] == 'reqStatus':
+            self.commandStats(self, caller)
+        elif obj['cmd'] == 'acceptStatus':
+            self.commandReadStats(obj)
 
     def acceptFile(self, obj, caller):
         print(f"Accepted file chunk: {obj['seq']}/{obj['fid']}")
@@ -105,8 +115,7 @@ class Commander:
             f.write(self.files[fid])
         del self.files[fid]
 
-    def _readFromDisk(self, fid):
-            # assuming we do have the file (skipping request denial for now)
+    def _readFromDisk(self, fid):  # TODO: File request rejection
             try:
                 filesize = os.stat(fid)[6]
             except OSError:
@@ -119,3 +128,15 @@ class Commander:
             self.filesOutMeta[fid][0] = filesize
             self.filesOutMeta[fid][1] = last_sequence
             self.filesOutMeta[fid][3] = 0
+
+    def commandStats(self, caller):
+        peer = self.socker.peers[caller]
+        obj = Command()
+        obj.ofKindStatsReply()
+        peer.sendline(json.dumps(obj.opts))
+
+    def commandReadStats(self, obj):
+        print(f'RSSI.. {obj['ssi']}dB')
+        print(f'Temp./Humid.. {obj['tmp'][0]}deg / {obj['tmp'][1]}%')
+        print(f'Gyro.. x:{obj['gyr'][0]} y:{obj['gyr'][1]} z:{obj['gyr'][2]}')
+        print(f'Pow.. {obj['pwr'][0]}V {obj['pwr'][1]}A')
