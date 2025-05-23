@@ -7,17 +7,17 @@ class BiMap:
         self.get[key] = value
         self.reverse[value] = key
 
-    def delByKey(self, key):
+    def del ByKey(self, key):
         try:
-            del(self.reverse[self.get[key]])
-            del(self.get[key])
+            del (self.reverse[self.get[key]])
+            del (self.get[key])
         except KeyError:
             pass
 
-    def delByVal(self, val):
+    def del ByVal(self, val):
         try:
-            del(self.get[self.reverse[val]])
-            del(self.reverse[val])
+            del (self.get[self.reverse[val]])
+            del (self.reverse[val])
         except KeyError:
             pass
 
@@ -27,7 +27,7 @@ class BiMap:
             self.get[key]
         except KeyError:
             has = False
-        return has 
+        return has
 
     def hasVal(self, val):
         has = True
@@ -35,4 +35,4 @@ class BiMap:
             self.reverse[val]
         except KeyError:
             has = False
-        return has 
+        return has
