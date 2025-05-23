@@ -34,7 +34,7 @@ class Socker:
 
         # auto-updater
         self.tim2 = machine.Timer(2)
-        self.tim2.init(mode=machine.Timer.PERIODIC, freq=5, callback=self._refresh)
+        self.tim2.init(mode=machine.Timer.PERIODIC, freq=500, callback=self._refresh)
 
     def _refresh(self, t):
         if self.server:
@@ -121,18 +121,9 @@ class Socker:
                 self.flushOutbuff(peer)
 
     def flushOutbuff(self, peer):  # for outputs
-        try:
-            msg = peer.outbuff.popleft()
-            peer.socket.sendall(msg.encode())
-            if msg != Peer.ACK_MESSAGE:
-                peer.acks += 1
-                self.log.debug(f'Expecting acknowledgement from "{peer.id}".')
-        except:  # IndexError or OSError9
-            pass
-
-    def ack(self, peer):
-        peer.outbuff.append(Peer.ACK_MESSAGE)
-        self.log.debug(f'Acknowledgement sent to "{peer.id}".')
+        if len(peer.outbuff) >= 1:
+            peer.socket.sendall(peer.outbuff)
+            peer.outbuff = bytearray()
 
     def saveInbuff(self, peer):  # asserted read
         try:
@@ -147,7 +138,7 @@ class Socker:
             self.closeSocket(peer)
             return
 
-        for line in raw.split(Peer.ENDL_SYMBOL.encode()):
+        for line in raw.split(Peer.ENDL_SYMBOL):
             self.log.debug(f'From {peer.id}: {line}')
             if peer.waitingAuth and line.startswith(Peer.HEAD_SYMBOL):  # asserted to be in anon list
                 # auth message must be sent in a single tcp pakcet to avoid cutoffs
@@ -158,7 +149,7 @@ class Socker:
                 self.nameToFd.put(peerId, peer.socket.fileno())
                 self.peers[peerId] = peer
                 del self.anons[peer.socket.fileno()]
-                self.ack(peer)
+                peer.ack()
             elif line.startswith(Peer.ACK_SYMBOL):
                 peer.acks -= 1
                 self.log.debug(f'Acknowledgement received for "{peer.id}".')
@@ -168,6 +159,5 @@ class Socker:
                 try:
                     peer.inbuff.append(line.decode())
                     self.log.debug(f'Message appended to input buffer: {line.decode()}.')
-                    self.ack(peer)
                 except:
                     self.log.error(f'Inbound message dropped. Queue full. ({line.decode()})')

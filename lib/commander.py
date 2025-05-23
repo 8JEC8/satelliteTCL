@@ -1,7 +1,5 @@
 from ubinascii import a2b_base64, b2a_base64
-import _thread
 import json
-import machine
 import math
 import os
 
@@ -24,14 +22,17 @@ class Commander:
     CHUNK_SIZE = 384  # 384 bytes from 512 bytes of base64 encoded data
     CHUNK_SIZE_B64 = 512
     def __init__(self, socker):
-        #
         self.socker = socker
         self.masters = [] # to read from
         self.slaves = [] # to input to
         self.files = {}
-        self.fileStats = {}  # save current status of outbound files
+        self.filesOutMeta = {}
 
-    def _refresh(self):
+    def _refresh(self, t):
+        pendingFiles = self.filesOutMeta.copy().keys()
+        for f in pendingFiles:  # some entires might disappear after being processed
+            self.sendFile(self.filesOutMeta[f][2], f)
+
         for s in self.slaves:
             try:
                 peer = self.socker.peers[s]
@@ -54,7 +55,7 @@ class Commander:
         if obj['cmd'] == 'acceptFile':
             self.acceptFile(obj, caller)
         elif obj['cmd'] == 'reqFile':
-            _thread.start_new_thread(self._readFromDisk, (fid, caller))
+            self._readFromDisk(fid, caller)
             self.sendFile(obj, caller)
 
     def acceptFile(self, obj, caller):
@@ -63,27 +64,48 @@ class Commander:
         fid = obj['fid']
         lng = obj['len']
         fin = obj['fin']
-        if seq == 1:
+        if seq == 0:
             self.files[fid] = bytearray(lng)
         self.files[fid][(seq - 1) * Commander.CHUNK_SIZE:seq * Commander.CHUNK_SIZE] = a2b_base64(obj['dat'])
         if fin == 1:
-            # wrap up and save to disk
-            _thread.start_new_thread(self._saveToDisk, (fid,))
-            #self._saveToDisk(fid)
+            #_thread.start_new_thread(self._saveToDisk, (fid,))
+            self._saveToDisk(fid)
 
-    def sendFile(self, destination, fid): # assuming peer exists
-        print('Started file transmission')
-        _thread.start_new_thread(self._readFromDisk, (fid, destination))
+    def sendFile(self, destination, fid):
+        #_thread.start_new_thread(self._readFromDisk, (fid, destination))
 
-    #def sendMessage(self, destination, message): # max size of 512 bytes, bigger should be sent as file
-        #  create
+        if self.filesOutMeta.get(fid) is None:
+            self.filesOutMeta[fid] = [None, None, destination, None] #filesize,  lastSeq, caller, currentSeq
+            self._readFromDisk(fid)
+            return
+
+        if self.filesOutMeta[fid][0] is not None:
+            fileSize, lastSeq, caller, seq = self.filesOutMeta[fid]
+            instrucObj = Command()
+            instrucObj.ofKindAcceptFile(fid, fileSize)
+
+            receiver = self.socker.peers[caller]
+
+            if receiver.acks < 4:
+                instrucObj.opts['seq'] = seq
+                instrucObj.opts['dat'] = b2a_base64(self.files[fid][(seq - 1) * Commander.CHUNK_SIZE:seq * Commander.CHUNK_SIZE]).decode('ascii')
+
+                if seq >= lastSeq:
+                    instrucObj.opts['fin'] = 1
+                    del self.files[fid]
+                    del self.filesOutMeta[fid]
+                else:
+                    self.filesOutMeta[fid][3] += 1
+
+                receiver.sendline(json.dumps(instrucObj.opts))
+                print(f'Dispatched seq {seq} @ commander.py')
             
     def _saveToDisk(self, fid):
         with open(fid, 'wb') as f:
             f.write(self.files[fid])
         del self.files[fid]
 
-    def _readFromDisk(self, fid, caller):
+    def _readFromDisk(self, fid):
             # assuming we do have the file (skipping request denial for now)
             try:
                 filesize = os.stat(fid)[6]
@@ -92,16 +114,8 @@ class Commander:
             with open(fid, 'rb') as f:
                 self.files[fid] = f.read()
 
-            instrucObj = Command()
-            instrucObj.ofKindAcceptFile(fid, filesize)
+            last_sequence = math.ceil(filesize / Commander.CHUNK_SIZE)
 
-            upperbound = math.ceil(filesize / Commander.CHUNK_SIZE)
-
-            for i in range(1, upperbound + 1):
-                instrucObj.opts['seq'] = i
-                instrucObj.opts['dat'] = b2a_base64(self.files[fid][(i - 1) * Commander.CHUNK_SIZE:i * Commander.CHUNK_SIZE], newline=False)
-                if i == upperbound:
-                    instrucObj.opts['fin'] = 1
-                self.socker.peers[caller].sendline(json.dumps(instrucObj.opts))
-
-            del self.files[fid]
+            self.filesOutMeta[fid][0] = filesize
+            self.filesOutMeta[fid][1] = last_sequence
+            self.filesOutMeta[fid][3] = 0

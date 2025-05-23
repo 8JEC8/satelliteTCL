@@ -9,8 +9,8 @@ class Peer:
     READY_TO_CONNECT = 0
 
     ACK_SYMBOL = b'\x06'
-    HEAD_SYMBOL = '\x02'
-    ENDL_SYMBOL = '\x1c'
+    HEAD_SYMBOL = b'\x02'
+    ENDL_SYMBOL = b'\x1c'
     ACK_MESSAGE = ACK_SYMBOL.decode('ascii')
 
     DEFAULT_EXT_ID = 'machine'
@@ -21,7 +21,7 @@ class Peer:
         self.id = id  # string
         self.externalId = Peer.DEFAULT_EXT_ID
         self.status = status  # exclusive to outbound connections and anons
-        self.outbuff = collections.deque([], 50, 1)
+        self.outbuff = bytearray()
         self.inbuff = collections.deque([], 50, 1)
         self.outbound = outbound
         self.waitingAuth = False
@@ -40,6 +40,9 @@ class Peer:
     def setExternalId(self, externalId):
         self.externalId = externalId
 
+    def ack(self):
+        self.outbuff.extend(Peer.ACK_SYMBOL + Peer.ENDL_SYMBOL)
+
     def readline(self):
         instruction = Peer.DEFAULT_OUTPUT
         try:
@@ -49,14 +52,19 @@ class Peer:
             pass
         except ValueError:
             if self.dangle != '':
+                print(f'Malformed json. Dropping string: {self.dangle + line}')
                 self.dangle = ''
             else: # we trust the sendee to have sent a perfectly formatted mess
                 self.dangle = line
+        else:
+            self.ack()        # message processed
+            self.dangle = ''  # successful recovery
         return instruction
 
     def sendline(self, msg):
         try:
-            self.outbuff.append(msg + Peer.ENDL_SYMBOL)
+            self.outbuff.extend(msg.encode() + Peer.ENDL_SYMBOL)
+            self.acks += 1
         except IndexError:
             pass
 
@@ -67,7 +75,10 @@ class Peer:
 
     def addAuth(self):
         if self.outbound:
-            self.outbuff.appendleft(f'{Peer.HEAD_SYMBOL}{self.externalId}{Peer.ENDL_SYMBOL}')
+            authMsg = Peer.HEAD_SYMBOL + self.externalId.encode() + Peer.ENDL_SYMBOL
+            if not self.outbuff.startswith(authMsg):
+                self.outbuff = bytearray(authMsg) + self.outbuff
+                self.acks += 1
 
     def canConnect(self):
         if self.status == Peer.READY_TO_CONNECT or self.status == 119:

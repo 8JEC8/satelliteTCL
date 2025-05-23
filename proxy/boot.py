@@ -4,6 +4,7 @@
 
 from commander import Commander
 from peer_tcp import Peer
+from machine import Timer
 import micropython
 import network_interface as ni
 import sock
@@ -18,3 +19,6 @@ Peer.DEFAULT_EXT_ID = 'earth'
 socket = sock.Socker(serverPort=8081)
 commands = Commander(socket)
 commands.masters.append('sputnik')
+
+tim = Timer(3)
+tim.init(mode = Timer.PERIODIC, freq = 1000, callback = commands._refresh)
