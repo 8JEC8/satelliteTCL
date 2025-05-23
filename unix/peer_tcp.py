@@ -11,7 +11,7 @@ class Peer:
     ACK_SYMBOL = b'\x06'
     HEAD_SYMBOL = '\x02'
     ENDL_SYMBOL = '\x1c'
-    ACK_MESSAGE = ACK_SYMBOL.decode('ascii') # keep to minimum size of a single byte
+    ACK_MESSAGE = ACK_SYMBOL.decode('ascii') + ENDL_SYMBOL # keep to minimum size of a single byte
 
     DEFAULT_EXT_ID = 'machine'
     DEFAULT_OUTPUT = json.loads('{}')
@@ -40,6 +40,9 @@ class Peer:
     def setExternalId(self, externalId):
         self.externalId = externalId
 
+    def ack(self):
+        self.outbuff.append(Peer.ACK_MESSAGE)
+
     def readline(self):
         instruction = Peer.DEFAULT_OUTPUT
         try:
@@ -48,15 +51,20 @@ class Peer:
         except IndexError:
             pass
         except ValueError:
+            print(f'Invalid json: {line}')
             if self.dangle != '':
                 self.dangle = ''
             else: # we trust the sendee to have sent a perfectly formatted mess
                 self.dangle = line
+        else:
+            self.ack()
+            self.dangle = ''
         return instruction
 
     def sendline(self, msg):
         try:
             self.outbuff.append(msg + Peer.ENDL_SYMBOL)
+            print(f'Appended to outbuff: {msg}')
         except IndexError:
             pass
 

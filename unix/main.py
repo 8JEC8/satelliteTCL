@@ -9,3 +9,5 @@ socket.peers["earth"] = Peer(('172.16.20.157', 8081), "earth", 0, None, outbound
 
 commands = Commander(socket)
 commands.masters.append('earth')
+commands._refresh()
+

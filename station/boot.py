@@ -3,11 +3,11 @@
 #esp.osdebug(None)
 
 from commander import Commander
+from machine import Timer
 from peer_tcp import Peer
 from sock import Socker
 import micropython
 import network_interface as ni
-import led
 
 micropython.alloc_emergency_exception_buf(100) # reserve memory for call back error stacks
 
@@ -21,3 +21,6 @@ socket.peers["earth"] = Peer(('192.168.4.1', 8081), "earth", 0, None, outbound=T
 
 commands = Commander(socket)
 commands.masters.append('earth')
+
+tim = Timer(3)
+tim.init(mode = Timer.PERIODIC, freq = 100, callback = commands._refresh)

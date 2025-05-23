@@ -48,7 +48,7 @@ class Socker:
 
         self.refreshOutbound()
         self.poll()
-        threading.Timer(.2, self._refresh).start()
+        threading.Timer(.002, self._refresh).start()
 
     def refreshOutbound(self):
         for peer in self.peers.values():
@@ -130,10 +130,6 @@ class Socker:
         except:  # IndexError or OSError9
             pass
 
-    def ack(self, peer):
-        peer.outbuff.append(Peer.ACK_MESSAGE)
-        self.log.debug(f'Acknowledgement sent to "{peer.id}".')
-
     def saveInbuff(self, peer):  # asserted read
         try:
             raw = peer.socket.recv(4096)  # asserted to end in special char
@@ -158,7 +154,7 @@ class Socker:
                 self.nameToFd.put(peerId, peer.socket.fileno())
                 self.peers[peerId] = peer
                 del self.anons[peer.socket.fileno()]
-                self.ack(peer)
+                peer.ack()
             elif line.startswith(Peer.ACK_SYMBOL):
                 peer.acks -= 1
                 self.log.debug(f'Acknowledgement received for "{peer.id}".')
@@ -168,6 +164,5 @@ class Socker:
                 try:
                     peer.inbuff.append(line.decode())
                     self.log.debug(f'Message appended to input buffer: {line.decode()}.')
-                    self.ack(peer)
                 except:
                     self.log.error(f'Inbound message dropped. Queue full. ({line.decode()})')
