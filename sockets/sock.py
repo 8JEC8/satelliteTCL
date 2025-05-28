@@ -14,6 +14,7 @@ class Socker:
         self.peers = {}
         self.nameToFd = BiMap()
         self.anons = {}
+        self.forwards = {}
 
         self.server = None
 
@@ -137,6 +138,15 @@ class Socker:
             self.log.info(f'Socket closure requested by peer "{peer.id}".')
             self.closeSocket(peer)
             return
+        elif peer.id != 'anon' and self.forwards.get(peer.id) is not None:  # forward if authenticated
+            forwardPeer = self.forwards.get(peer.id)
+            try:
+                self.peers[forwardPeer].outbuff.extend(raw)
+                self.log.debug(f'Forwarded message to "{forwardPeer}" from "{peer.id}".')
+            except KeyError:
+                self.log.warn(f'Forward host "{forwardPeer}" for "{peer.id}" is not online. Message dropped.')
+            return
+
 
         for line in raw.split(Peer.ENDL_SYMBOL):
             self.log.debug(f'From {peer.id}: {line}')
