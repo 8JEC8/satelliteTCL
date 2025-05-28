@@ -9,9 +9,10 @@ log = logs.Logger('WiFi', 'wifi.log')
 
 
 class Nif:
-
+    sta = network.WLAN(network.STA_IF)
+    ap = network.WLAN(network.AP_IF)
     def wifirecover_(self, t):
-        if self.sta.status() == network.STAT_GOT_IP:
+        if Nif.sta.status() == network.STAT_GOT_IP:
             t.deinit()
             self.led.green()
             self.led.on()
@@ -22,7 +23,7 @@ class Nif:
             log.info("Connection recovered.")
             return
 
-        if self.sta.status() < 1000:
+        if Nif.sta.status() < 1000:
             self.led.red()
             self.led.toggle()
             # return
@@ -31,7 +32,7 @@ class Nif:
             self.led.toggle()
 
     def wificheck_(self, t):
-        if self.sta.status() != network.STAT_GOT_IP:
+        if Nif.sta.status() != network.STAT_GOT_IP:
             t.deinit()
             self.wifirecover()
             log.info("Connection lost.")
@@ -53,22 +54,20 @@ class Nif:
         self.keys = json.load(open('keys.json'))
         self.tim1 = machine.Timer(1)
         self.led = led.Led()
-        self.ap = network.WLAN(network.AP_IF)
-        self.sta = network.WLAN(network.STA_IF)
         self.wanAccess = wanAccess
         self.timeSync = False
 
     def setup_ap(self):
-        self.ap.active(True)
-        self.ap.config(
+        Nif.ap.active(True)
+        Nif.ap.config(
                        essid=self.keys['ap']['ssid'],
                        password=self.keys['ap']['key'],
                        security=3 if len(self.keys['ap']['key']) >= 8 else 0)
 
     def setup_sta(self):
-        self.sta.active(False)  # assert inactive
-        self.sta.active(True)
-        self.sta.connect(
+        Nif.sta.active(False)  # assert inactive
+        Nif.sta.active(True)
+        Nif.sta.connect(
             self.keys['station']['ssid'],
             self.keys['station']['key'])
         self.wifirecover()
