@@ -62,6 +62,8 @@ class Commander:
         elif obj['cmd'] == 'reqFile':
             _thread.start_new_thread(self._readFromDisk, (fid, caller))
             self.sendFile(obj, caller)
+        elif obj['cmd'] == 'acceptStatus':
+            self.commandReadStats(obj)
 
     def acceptFile(self, obj, caller):
         print(f"Accepted file chunk: {obj['seq']}/{obj['fid']}")
@@ -126,3 +128,9 @@ class Commander:
             self.filesOutMeta[fid][0] = filesize
             self.filesOutMeta[fid][1] = last_sequence
             self.filesOutMeta[fid][3] = 0
+
+    def commandReadStats(self, obj):
+        print(f'RSSI.. {obj['ssi']}dB')
+        print(f'Temp./Humid.. {obj['tmp'][0]}deg / {obj['tmp'][1]}%')
+        print(f'Gyro.. x:{obj['gyr'][0]} y:{obj['gyr'][1]} z:{obj['gyr'][2]}')
+        print(f'Pow.. {obj['pwr'][0]}V {obj['pwr'][1]}A')
