@@ -17,6 +17,8 @@ nif.setup_ap()
 
 Peer.DEFAULT_EXT_ID = 'earth'
 socket = sock.Socker(serverPort=8081)
+socket.forwards['sputnik'] = 'rodro'
+socket.forwards['rodro'] = 'sputnik'
 commands = Commander(socket)
 commands.masters.append('sputnik')
 
