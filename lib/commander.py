@@ -1,3 +1,4 @@
+from network_interface import Nif
 from ubinascii import a2b_base64, b2a_base64
 import json
 import math
@@ -10,10 +11,13 @@ class Command:  # TODO: Style and readabilty
 
     def ofKindStatsReply(self):
         self.opts['cmd'] = 'acceptStatus'
-        self.opts['ssi'] = 0  # db
+        self.opts['ssi'] = Nif.sta.status('rssi')  # db
         self.opts['tmp'] = (32, 69)  # celsius, humidity
         self.opts['gyr'] = (44, 90, 101)  # x, y, z
         self.opts['pwr'] = (5, 0.5)  # volt, amp
+
+    def ofKindReqStats(self):
+        self.opts['cmd'] = 'reqStatus'
 
     def ofKindAcceptFile(self, filename, binarysize):
         self.opts['seq'] = 1
@@ -22,7 +26,11 @@ class Command:  # TODO: Style and readabilty
         self.opts['len'] = binarysize
         self.opts['fin'] = 0
         self.opts['dat'] = bytearray(Commander.CHUNK_SIZE_B64)
-        
+
+    def ofKindGenericErorr(self, errorMsg):
+        self.opts['cmd'] = 'error'
+        self.opts['msg'] = errorMsg
+
 
 class Commander:
     CHUNK_SIZE = 384  # 384 bytes from 512 bytes of base64 encoded data
@@ -37,7 +45,7 @@ class Commander:
     def _refresh(self, t):
         pendingFiles = self.filesOutMeta.copy().keys()
         for f in pendingFiles:  # some entires might disappear after being processed
-            self.sendFile(self.filesOutMeta[f][2], f)
+            self.handleSendFile(self.filesOutMeta[f][2], f)
 
         for s in self.slaves:
             try:
@@ -59,16 +67,16 @@ class Commander:
 
     def handleCommand(self, obj, caller):  # skipping file size check
         if obj['cmd'] == 'acceptFile':
-            self.acceptFile(obj, caller)
+            self.handleAcceptFile(obj, caller)
         elif obj['cmd'] == 'reqFile':
             self._readFromDisk(fid, caller)
-            self.sendFile(obj, caller)
+            self.handleSendFile(obj, caller)
         elif obj['cmd'] == 'reqStatus':
-            self.commandStats(self, caller)
+            self.handleReqStats(self, caller)
         elif obj['cmd'] == 'acceptStatus':
             self.commandReadStats(obj)
 
-    def acceptFile(self, obj, caller):
+    def handleAcceptFile(self, obj, caller):
         print(f"Accepted file chunk: {obj['seq']}/{obj['fid']}")
         seq = obj['seq']
         fid = obj['fid']
@@ -81,7 +89,7 @@ class Commander:
             #_thread.start_new_thread(self._saveToDisk, (fid,))
             self._saveToDisk(fid)
 
-    def sendFile(self, destination, fid):
+    def handleSendFile(self, destination, fid):
         #_thread.start_new_thread(self._readFromDisk, (fid, destination))
 
         if self.filesOutMeta.get(fid) is None:
@@ -129,7 +137,7 @@ class Commander:
             self.filesOutMeta[fid][1] = last_sequence
             self.filesOutMeta[fid][3] = 0
 
-    def commandStats(self, caller):
+    def handleReqStats(self, caller):
         peer = self.socker.peers[caller]
         obj = Command()
         obj.ofKindStatsReply()
