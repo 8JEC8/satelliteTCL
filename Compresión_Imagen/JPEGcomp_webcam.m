@@ -1,6 +1,9 @@
 function [Compressed_Data,Compressed_Image] = JPEGcomp(Original_Image,Quality_Factor)
 webcamlist;
 cam=webcam;
+preview(cam)
+
+%% Start Compression
 img=snapshot(cam);
 imwrite(img, 'C:\Users\andyp\OneDrive\Documents\Semestre 6\Diseño de sistemas de comunicaciones\Matlab compression\img_og.jpeg');
 Original_Image = img;
