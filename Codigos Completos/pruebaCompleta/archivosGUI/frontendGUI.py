@@ -7,6 +7,7 @@ import threading
 import queue
 import re
 from PIL import Image, ImageTk
+import main
 import subprocess
 import os
 import time
@@ -18,48 +19,49 @@ class TerminalMicroPython:
         self.root=root
         root.title("Interfaz de usuario sistema satelital")
 
-         #Frame de ajustes
-        self.settings_frame=ttk.LabelFrame(root, text="Ajustes seriales")
+        #Frame de ajustes
+        self.settings_frame=ttk.LabelFrame(root, text="Ajustes de conexión")
         self.settings_frame.pack(pady=5, padx=5, fill=tk.X)
-    
-        # Seleccionador de puertos
-        ttk.Label(self.settings_frame, text="Puerto:").grid(row=0, column=0, padx=5)
-        self.port_combobox=ttk.Combobox(self.settings_frame, width=15)
-        self.port_combobox.grid(row=0, column=1, padx=5)
-        self.refresh_ports()
+   
+        # Seleccionador de IP
+        self.ip_var = tk.StringVar(value='192.168.0.1')
+        ttk.Label(self.settings_frame, text="IPv4:").grid(row=0, column=0, padx=5)
+        self.ip_entry=ttk.Entry(self.settings_frame, width=14, textvariable=self.ip_var)
+        self.ip_entry.grid(row=0, column=1, padx=5)
 
-        # Seleccionador de baud rate (Default = 115200)
-        ttk.Label(self.settings_frame, text="Baud rate:").grid(row=0, column=2, padx=5)
-        self.baudrate_var = tk.StringVar(value="115200")
-        self.baudrate_combobox = ttk.Combobox(
+        # Seleccionador de puerto
+        ttk.Label(self.settings_frame, text="Puerto:").grid(row=0, column=2, padx=5)
+        self.port_var = tk.StringVar(value="8080")
+        self.port_box = ttk.Entry(
+                self.settings_frame,
+                width=6,
+                textvariable=self.port_var)
+        self.port_box.grid(row=0, column=3, padx=5)
+
+        # Nombre nuestro para identificación remota
+        ttk.Label(self.settings_frame, text="L Name:").grid(row=0, column=4, padx=5)
+        self.lname_var = tk.StringVar(value="rodro")
+        self.hostname_box = ttk.Entry(
                 self.settings_frame,
                 width=10,
-                textvariable=self.baudrate_var,
-                value=["9600","19200","38400","57600","115200"]
-        )
-        self.baudrate_combobox.grid(row=0, column=3, padx=5)
+                textvariable=self.lname_var)
+        self.hostname_box.grid(row=0, column=5, padx=5)
+
+        # Nombre simbólico que damos al host remoto
+        ttk.Label(self.settings_frame, text="R Name:").grid(row=0, column=6, padx=5)
+        self.rname_var = tk.StringVar(value="earth")
+        self.remote_host = ttk.Entry(
+                self.settings_frame,
+                width=10,
+                textvariable=self.rname_var)
+        self.remote_host.grid(row=0, column=7, padx=5)
         
         #Botón conectar y desconectar
-        self.connect_button=ttk.Button(
+        self.connect_button = ttk.Button(
                 self.settings_frame,
                 text="Conectar",
-                command=self.toggle_connection
-        )
-        self.connect_button.grid(row=0, column=4, padx=5)
-
-        #Botón de reset
-        self.reset_button = ttk.Button(
-                self.settings_frame,
-                text="Reset (CTRL+D)",
-                command=self.reset_micropython,
-                state="disabled"
-        )
-        self.reset_button.grid(row=0, column=5, padx=5)
-        
-        #Seleccionar IP
-        ttk.Label(self.settings_frame, text="IP:").grid(row=0, column=6, padx=5)
-        self.ip_entry=ttk.Entry(self.settings_frame, width=20)
-        self.ip_entry.grid(row=0, column=7, padx=5)
+                command=self.toggle_connection)
+        self.connect_button.grid(row=0, column=8, padx=5)
 
         #Frame general central
         self.general_frame=ttk.Frame(root)
@@ -101,7 +103,6 @@ class TerminalMicroPython:
         ).pack(pady=5)
         
         #Botón obtener imágen
-
         self.guardar_btn = ttk.Button(self.image_frame, text="Guardar imagen del ESP32", command=self.recibir_imagen_desde_esp32)
         self.guardar_btn.pack(pady=5)
 
@@ -277,9 +278,7 @@ class TerminalMicroPython:
             # Mostrar imagen en el canvas
             self.image_canvas.create_image(
                 500, 300,  # Centro del canvas
-                image=self.current_image,
-
-            )
+                image=self.current_image,)
             
             # Mostrar nombre del archivo
             filename = self.image_path.split("/")[-1]
@@ -288,31 +287,21 @@ class TerminalMicroPython:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo cargar la imagen:\n{str(e)}")
             self.image_label.config(text="Error al cargar imagen")
-
     def refresh_ports(self):
         """Actualizar puertos al usar seleccionador"""
         ports= [port.device for port in serial.tools.list_ports.comports()]
         self.port_combobox["values"]=ports
         if ports:
             self.port_combobox.set(ports[0])
-
     def toggle_connection(self):
-        """Para conectar o desconectar de micropython"""
-        if self.serial_port and self.serial_port.is_open:
-            self.disconnect_serial()
-            self.connect_button["text"]= "Conectar"
-            self.reset_button["state"] = "disabled"
-            self.led_button["state"] = "disabled"
-            for btn in self.commands_frame.winfo_children():
-                btn["state"] = "disabled"
-
-        else:
-            if self.connect_serial():
-                self.connect_button["text"]="Desconectar"
-                self.reset_button["state"] = "normal"
-                self.led_button["state"] = "normal"
-                for btn in self.commands_frame.winfo_children():
-                    btn["state"] = "normal"
+        ''' Conectar a host remoto '''
+        self.connect_button['state'] = 'disabled'
+        main.setExtId(self.lname_var.get())
+        main.connectTo(self.rname_var.get(), self.ip_var.get(), int(self.port_var.get()))
+        main.setPrinter(self.print_output)
+        self.led_button["state"] = "normal"
+        for btn in self.commands_frame.winfo_children():
+            btn["state"] = "normal"
 
     def connect_serial(self):
         """Abrir conexión serial"""
@@ -396,15 +385,14 @@ class TerminalMicroPython:
         """Manda algun comando predefinido"""
         
         if not (self.serial_port and self.serial_port.is_open):
-            messagebox.showerror("Error", "No conectado a puerto serial!")
+            messagebox.showerror("Error", "Host remoto no conectado.")
             return
 
         try:
-            self.serial_port.write((command+ "\r\n").encode())
             self.print_output(f">>> {command}\n")
         except Exception as e:
             self.print_output(f"\nFailed to send command: {str(e)}\n")
-
+    
     def poll_serial_output(self):
 
         while not self.output_queue.empty():
@@ -501,7 +489,6 @@ class TerminalMicroPython:
         self.output_text.configure(state="disabled")
         self.output_text.see(tk.END)
 
-
     def recibir_imagen_desde_esp32(self):
         self.toggle_connection()
         request.request_image_and_save_b64()
@@ -509,8 +496,8 @@ class TerminalMicroPython:
         self.toggle_connection()
         return
 
-
 if __name__=="__main__":
     root=tk.Tk()
     app=TerminalMicroPython(root)
     root.mainloop()
+    main.setPrinter(app.print_output)
