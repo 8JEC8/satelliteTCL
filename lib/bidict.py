@@ -7,14 +7,14 @@ class BiMap:
         self.get[key] = value
         self.reverse[value] = key
 
-    def del ByKey(self, key):
+    def delByKey(self, key):
         try:
             del (self.reverse[self.get[key]])
             del (self.get[key])
         except KeyError:
             pass
 
-    def del ByVal(self, val):
+    def delByVal(self, val):
         try:
             del (self.get[self.reverse[val]])
             del (self.reverse[val])
