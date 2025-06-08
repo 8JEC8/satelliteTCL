@@ -1,4 +1,10 @@
 ./proxy/boot.py
+./proxy/keys.json
 ./sockets/sock.py
 ./sockets/peer_tcp.py
 ./lib/commander.py
+./lib/network_interface.py
+./lib/logger.py
+./lib/bidict.py
+./lib/ntptime.py
+./lib/led.py
