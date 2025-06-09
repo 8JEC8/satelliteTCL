@@ -20,12 +20,21 @@ class Command:
         self.opts['len'] = binarysize
         self.opts['fin'] = 0
         self.opts['dat'] = bytearray(Commander.CHUNK_SIZE_B64)
+
+    def ofKindSyncTime(self, time):
+        self.opts['cmd'] = 'time'
+        self.opts['tim'] = time  # from Y2K epoch
+
+    def ofKindGiveFile(self, filename):
+        self.opts['cmd'] = 'reqFile'
+        self.opts['fid'] = filename
         
 
 class Commander:
     CHUNK_SIZE = 384  # 384 bytes from 512 bytes of base64 encoded data
     CHUNK_SIZE_B64 = 512
     def __init__(self, socker):
+        self.phyStatus = [(0,0), (0,0), (0,0,0), (0,)]
         self.socker = socker
         self.masters = [] # to read from
         self.slaves = [] # to input to
@@ -56,6 +65,11 @@ class Commander:
             self.handleCommand(a, m)
         threading.Timer(.001, self._refresh).start()
 
+    def handleRequestFile(self, provider, fid):
+        instrucObj = Command()
+        instrucObj.ofKindGiveFile(fid)
+        self.socker.peers[provider].sendline(json.dumps(instrucObj.opts))
+
     def handleCommand(self, obj, caller):  # skipping file size check
         if obj['cmd'] == 'acceptFile':
             self.acceptFile(obj, caller)
@@ -64,6 +78,13 @@ class Commander:
             self.sendFile(obj, caller)
         elif obj['cmd'] == 'acceptStatus':
             self.commandReadStats(obj)
+
+    def syncTime(self, peer):
+        print(f'Sending {peer.id} the current time...')
+        instrucObj = Command()
+        instrucObj.ofKindSyncTime(int(time.time()) - 946684800)
+        peer.handShaken = True
+        peer.sendline(json.dumps(instrucObj.opts))
 
     def acceptFile(self, obj, caller):
         print(f"Accepted file chunk: {obj['seq']}/{obj['fid']}")
@@ -128,9 +149,11 @@ class Commander:
             self.filesOutMeta[fid][0] = filesize
             self.filesOutMeta[fid][1] = last_sequence
             self.filesOutMeta[fid][3] = 0
+    def readStatus(self):
+        return self.phyStatus
 
     def commandReadStats(self, obj):
-        print(f'RSSI.. {obj['ssi']}dB')
-        print(f'Temp./Humid.. {obj['tmp'][0]}deg / {obj['tmp'][1]}%')
-        print(f'Gyro.. x:{obj['gyr'][0]} y:{obj['gyr'][1]} z:{obj['gyr'][2]}')
-        print(f'Pow.. {obj['pwr'][0]}V {obj['pwr'][1]}A')
+        self.phyStatus[0] = (obj['tmp'][0], obj['tmp'][1])
+        self.phyStatus[1] = (obj['pwr'][0], obj['pwr'][1])
+        self.phyStatus[2] = (obj['gyr'][0], obj['gyr'][1], obj['gyr'][2])
+        self.phyStatus[3] = (obj['ssi'],)

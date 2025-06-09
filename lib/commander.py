@@ -1,10 +1,14 @@
 from network_interface import Nif
 from ubinascii import a2b_base64, b2a_base64
+import gc
 import json
 import math
 import os
 
-
+'''
+Commands created using this class are not initiators,
+but represent the structure used for data transfer.
+'''
 class Command:  # TODO: Style and readabilty
     def __init__(self):
         self.opts = {}
@@ -31,6 +35,14 @@ class Command:  # TODO: Style and readabilty
         self.opts['cmd'] = 'error'
         self.opts['msg'] = errorMsg
 
+    def ofKindGiveFile(self, filename):
+        self.opts['cmd'] = 'reqFile'
+        self.opts['fid'] = filename
+
+    def ofKindSyncTime(self, time):
+        self.opts['cmd'] = 'time'
+        self.opts['tim'] = time  # from Y2K epoch
+
 
 class Commander:
     CHUNK_SIZE = 384  # 384 bytes from 512 bytes of base64 encoded data
@@ -41,23 +53,23 @@ class Commander:
         self.slaves = [] # to input to
         self.files = {}
         self.filesOutMeta = {}
+        self.counterFiveHundred = 0 
 
     def _refresh(self, t):
-        pendingFiles = self.filesOutMeta.copy().keys()
-        for f in pendingFiles:  # some entires might disappear after being processed
-            self.handleSendFile(self.filesOutMeta[f][2], f)
-
-        for s in self.slaves:
-            try:
-                peer = self.socker.peers[s]
-            except KeyError:
-                continue
+        self.counterFiveHundred += 1
+        if self.counterFiveHundred < 100:  # pause file sending if status is due
+            pendingFiles = self.filesOutMeta.copy().keys()
+            for f in pendingFiles:  # some entires might disappear after being processed
+                self.handleSendFile(self.filesOutMeta[f][2], f)
 
         for m in self.masters:
             try:
                 peer = self.socker.peers[m]
             except KeyError:
                 continue
+
+            if self.counterFiveHundred >= 100:
+                self.handleReqStats(peer)
 
             a =  peer.readline()
             if len(a) == 0:
@@ -69,12 +81,26 @@ class Commander:
         if obj['cmd'] == 'acceptFile':
             self.handleAcceptFile(obj, caller)
         elif obj['cmd'] == 'reqFile':
-            self._readFromDisk(fid, caller)
-            self.handleSendFile(obj, caller)
-        elif obj['cmd'] == 'reqStatus':
-            self.handleReqStats(self, caller)
+            self.handleSendFile(caller, obj['fid'])
         elif obj['cmd'] == 'acceptStatus':
             self.commandReadStats(obj)
+        elif obj['cmd'] == 'time':
+            self.handleSynctime(obj)
+
+    def handleSyncTime(self, obj):
+        import machine
+        import time
+        tm = time.gmtime(obj[tim])
+        print('Syncing time...')
+        machine.RTC().datetime((tm[0], tm[1], tm[6] + 1, tm[3], tm[4], tm[5], 0))
+        print('Time synced')
+
+    def handleSendSyncTime(self, peer):
+        import time
+        instrucObj = Command()
+        instrucObj.ofKindSyncTime(time.time())
+        peer.sendline(json.dumps(instrucObj.opts))
+        print(f'Sent time sync request to {peer.id}')
 
     def handleAcceptFile(self, obj, caller):
         print(f"Accepted file chunk: {obj['seq']}/{obj['fid']}")
@@ -91,7 +117,6 @@ class Commander:
 
     def handleSendFile(self, destination, fid):
         #_thread.start_new_thread(self._readFromDisk, (fid, destination))
-
         if self.filesOutMeta.get(fid) is None:
             self.filesOutMeta[fid] = [None, None, destination, None] #filesize,  lastSeq, caller, currentSeq
             self._readFromDisk(fid)
@@ -112,6 +137,7 @@ class Commander:
                     instrucObj.opts['fin'] = 1
                     del self.files[fid]
                     del self.filesOutMeta[fid]
+                    gc.collect()
                 else:
                     self.filesOutMeta[fid][3] += 1
 
@@ -137,14 +163,9 @@ class Commander:
             self.filesOutMeta[fid][1] = last_sequence
             self.filesOutMeta[fid][3] = 0
 
-    def handleReqStats(self, caller):
-        peer = self.socker.peers[caller]
-        obj = Command()
-        obj.ofKindStatsReply()
-        peer.sendline(json.dumps(obj.opts))
-
-    def commandReadStats(self, obj):
-        print(f'RSSI.. {obj['ssi']}dB')
-        print(f'Temp./Humid.. {obj['tmp'][0]}deg / {obj['tmp'][1]}%')
-        print(f'Gyro.. x:{obj['gyr'][0]} y:{obj['gyr'][1]} z:{obj['gyr'][2]}')
-        print(f'Pow.. {obj['pwr'][0]}V {obj['pwr'][1]}A')
+    def handleReqStats(self, peer):
+        if peer.acks < 4:
+            obj = Command()
+            obj.ofKindStatsReply()
+            peer.sendline(json.dumps(obj.opts))
+            self.counterFiveHundred = 0
