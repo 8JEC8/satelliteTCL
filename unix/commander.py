@@ -2,6 +2,7 @@
 #   UNIX VERSION
 #
 from base64 import b64encode, b64decode
+from logger import Logger
 import json
 import math
 import os
@@ -28,13 +29,20 @@ class Command:
     def ofKindGiveFile(self, filename):
         self.opts['cmd'] = 'reqFile'
         self.opts['fid'] = filename
-        
+    
+    def ofKindToggleLed(self):
+        self.opts['cmd'] = 'led'
+
+    def ofKindReqFiles(self):
+        self.opts['cmd'] = 'ls'
+
 
 class Commander:
     CHUNK_SIZE = 384  # 384 bytes from 512 bytes of base64 encoded data
     CHUNK_SIZE_B64 = 512
     def __init__(self, socker):
-        self.phyStatus = [(0,0), (0,0), (0,0,0), (0,)]
+        self.log = Logger('Commands', 'cmdloop.log')
+        self.phyStatus = [(0,0), (0,0), (0,0,0), (0,), (0,)]
         self.socker = socker
         self.masters = [] # to read from
         self.slaves = [] # to input to
@@ -65,6 +73,11 @@ class Commander:
             self.handleCommand(a, m)
         threading.Timer(.001, self._refresh).start()
 
+    def handleRequestLed(self, ledOwner):
+        instrucObj = Command()
+        instrucObj.ofKindToggleLed()
+        self.socker.peers[ledOwner].sendline(json.dumps(instrucObj.opts))
+
     def handleRequestFile(self, provider, fid):
         instrucObj = Command()
         instrucObj.ofKindGiveFile(fid)
@@ -78,6 +91,8 @@ class Commander:
             self.sendFile(obj, caller)
         elif obj['cmd'] == 'acceptStatus':
             self.commandReadStats(obj)
+        elif obj['cmd'] == 'lsRes':
+            self.handleLsRes(obj)
 
     def syncTime(self, peer):
         print(f'Sending {peer.id} the current time...')
@@ -93,22 +108,21 @@ class Commander:
         lng = obj['len']
         fin = obj['fin']
         if seq == 0:
-            self.files[fid] = bytearray(lng)
-        self.files[fid][(seq - 1) * Commander.CHUNK_SIZE:seq * Commander.CHUNK_SIZE] = b64decode(obj['dat'])
+            self.files[fid] = open(fid, 'wb')
+        self.files[fid].write(b64decode(obj['dat']))
         if fin == 1:
-            # wrap up and save to disk
-            #_thread.start_new_thread(self._saveToDisk, (fid,))
-            self._saveToDisk(fid)
+            self.files[fid].close()
+            del self.files[fid]
+            self.log.info(f'Finished downloading {obj["fid"]} ({obj["len"]})B')
 
     def sendFile(self, destination, fid): # assuming peer exists. can be used for first invocation as well as recurring refreshes
         #print('Started file transmission')
         #_thread.start_new_thread(self._readFromDisk, (fid, destination))
-
         if self.filesOutMeta.get(fid) is None:
             self.filesOutMeta[fid] = [None, None, destination, None] #filesize,  lastSeq, caller, currentSeq
             self._readFromDisk(fid)
             return
-
+        
         if self.filesOutMeta[fid][0] is not None:
             fileSize, lastSeq, caller, seq = self.filesOutMeta[fid]
             instrucObj = Command()
@@ -118,10 +132,11 @@ class Commander:
 
             if receiver.acks < 4:
                 instrucObj.opts['seq'] = seq
-                instrucObj.opts['dat'] = b64encode(self.files[fid][(seq - 1) * Commander.CHUNK_SIZE:seq * Commander.CHUNK_SIZE]).decode('ascii')
+                instrucObj.opts['dat'] = b64encode(self.files[fid].read(Commander.CHUNK_SIZE)).decode('ascii')
 
                 if seq >= lastSeq:
                     instrucObj.opts['fin'] = 1
+                    self.files[fid].close()
                     del self.files[fid]
                     del self.filesOutMeta[fid]
                 else:
@@ -129,26 +144,24 @@ class Commander:
 
                 receiver.sendline(json.dumps(instrucObj.opts))
                 print(f'Dispatched seq {seq} @ commander.py')
-            
-    def _saveToDisk(self, fid):
-        with open(fid, 'wb') as f:
-            f.write(self.files[fid])
-        del self.files[fid]
+
 
     def _readFromDisk(self, fid):
             # assuming we do have the file (skipping request denial for now)
             try:
                 filesize = os.stat(fid)[6]
             except OSError:
+                del self.filesOutMeta[fid]
                 return
-            with open(fid, 'rb') as f:
-                self.files[fid] = f.read()
+
+            self.files[fid] = open(fid, 'rb')
 
             last_sequence = math.ceil(filesize / Commander.CHUNK_SIZE)
 
             self.filesOutMeta[fid][0] = filesize
-            self.filesOutMeta[fid][1] = last_sequence
+            self.filesOutMeta[fid][1] = last_sequence - 1
             self.filesOutMeta[fid][3] = 0
+
     def readStatus(self):
         return self.phyStatus
 
@@ -157,3 +170,15 @@ class Commander:
         self.phyStatus[1] = (obj['pwr'][0], obj['pwr'][1])
         self.phyStatus[2] = (obj['gyr'][0], obj['gyr'][1], obj['gyr'][2])
         self.phyStatus[3] = (obj['ssi'],)
+        self.phyStatus[4] = (obj['led'],)
+
+    def handleLsRes(self, obj):
+        self.log.info(f'Files in root: {obj['root']}')
+        self.log.info(f'Files in SD card: {obj['sd']}')
+
+    def commandReqFiles(self, filee):
+        instrucObj = Command()
+        instrucObj.ofKindReqFiles()
+        peer = self.socker.peers[filee]
+        peer.sendline(json.dumps(instrucObj.opts))
+        

@@ -10,7 +10,7 @@ import select
 # Non-blocking inbound/outbound socket handler
 class Socker:
     def __init__(self, serverPort=None):
-        self.log = Logger('TCP-Sock', 'sockets.log')
+        self.log = Logger('TCP-Sock')
         self.peers = {}
         self.nameToFd = BiMap()
         self.anons = {}
@@ -85,7 +85,7 @@ class Socker:
         except:
             self.log.warn(f'An exception occurred while closing socket for peer {peer.id}.')
             pass
-        self.log.info(f'Connection closed for {peer.id}.')
+        self.log.debug(f'Connection closed for {peer.id}.')
         self.log.debug(f'Connection removal from poller')
 
         if peer.waitingAuth:
@@ -106,7 +106,10 @@ class Socker:
     def poll(self):
         for s in self.poller.ipoll(1):
             if self.nameToFd.hasVal(s[0].fileno()):
-                peer = self.peers[self.nameToFd.reverse[s[0].fileno()]]
+                try:
+                    peer = self.peers[self.nameToFd.reverse[s[0].fileno()]]
+                except KeyError:
+                    self.nameToFd.delByVal(s[0].fileno())
             elif s[0].fileno() == -1:
                 self.poller.unregister(s[0])
                 return
@@ -123,14 +126,17 @@ class Socker:
 
     def flushOutbuff(self, peer):  # for outputs
         if len(peer.outbuff) >= 1:
-            peer.socket.sendall(peer.outbuff)
-            peer.outbuff = bytearray()
+            try:
+                peer.socket.sendall(peer.outbuff)
+                peer.outbuff = bytearray()
+            except OSError as e:
+                self.log.warn(f'Cannot unload outbuff: {e}')
 
     def saveInbuff(self, peer):  # asserted read
         try:
             raw = peer.socket.recv(4096)  # asserted to end in special char
         except OSError as ex:
-            self.log.error(f'Connection for {peer.id} is in an unrecoverable state: {ex}')
+            self.log.debug(f'Connection for {peer.id} is in an unrecoverable state: {ex}')
             self.closeSocket(peer)
             return
 
@@ -144,7 +150,8 @@ class Socker:
                 self.peers[forwardPeer].outbuff.extend(raw)
                 self.log.debug(f'Forwarded message to "{forwardPeer}" from "{peer.id}".')
             except KeyError:
-                self.log.warn(f'Forward host "{forwardPeer}" for "{peer.id}" is not online. Message dropped.')
+                peer.ack()
+                self.log.warn(f'Forward host "{forwardPeer}" for "{peer.id}" is not online. Message dropped & ackd.')
             return
 
 

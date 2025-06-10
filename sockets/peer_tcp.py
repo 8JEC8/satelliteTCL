@@ -72,6 +72,7 @@ class Peer:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setblocking(False)
         self.status = Peer.READY_TO_CONNECT
+        self.acks = 0
 
     def addAuth(self):
         if self.outbound:
