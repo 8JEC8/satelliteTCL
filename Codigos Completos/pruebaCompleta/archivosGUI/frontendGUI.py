@@ -101,9 +101,14 @@ class TerminalMicroPython:
             text="Mostrar imagen",
             command=self.display_image
         ).pack(pady=5)
+
+        # Botón para seleccionar imagen remota
+        ttk.Label(self.image_frame, text="Archivo remoto").pack(pady=(5,0))
+        self.remote_entry = ttk.Entry(self.image_frame, width=20)
+        self.remote_entry.pack(pady=5, padx=5)
         
         #Botón obtener imágen
-        self.guardar_btn = ttk.Button(self.image_frame, text="Guardar imagen del ESP32", command=self.recibir_imagen_desde_esp32)
+        self.guardar_btn = ttk.Button(self.image_frame, text="Solicitar archivo", command=self.recibir_imagen_desde_esp32)
         self.guardar_btn.pack(pady=5)
 
         # Canvas para mostrar la imagen
@@ -116,47 +121,19 @@ class TerminalMicroPython:
         self.led_state = False
         self.led_button =ttk.Button(
                 self.commands_frame,
-                text="LED apagado",
+                text="Encender LED",
                 command=self.toggle_led,
                 state="disabled"
             )
-        self.led_button.grid(row=6,column=0, padx=5)
-        
-        # Comandos predefinidos
-        ttk.Button(
-            self.commands_frame,
-            text="Lista de comandos",
-            command=lambda: self.send_predefined_command("command.list"),
-            state="disabled"
-        ).grid(row=5,column=0, padx=5)
-        
-        ttk.Button(
-            self.commands_frame,
-            text="RSSI",
-            command=lambda: self.send_predefined_command(".RSSI"),
-            state="disabled"
-        ).grid(row=4, column=0, padx=5)
-        
-        ttk.Button(
-            self.commands_frame,
-            text="Consumo de energía",
-            command=lambda: self.send_predefined_command(".POW"),
-            state="disabled"
-        ).grid(row=2, column=0, padx=5)
-        
-        ttk.Button(
-            self.commands_frame,
-            text="Temperatura",
-            command=lambda: self.send_predefined_command(".TEMP"),
-            state="disabled"
-        ).grid(row=0, column=0, padx=5)
+        self.led_button.grid(row=0,column=0, padx=5)
 
-        ttk.Button(
-            self.commands_frame,
-            text="Lectura giroscopio",
-            command=lambda: self.send_predefined_command(".GYRO"),
-            state="disabled"
-        ).grid(row=1, column=0, padx=5)
+        self.dirlist_button =ttk.Button(
+                self.commands_frame,
+                text="Listar archivos",
+                command=self.req_ls,
+                state="disabled"
+            )
+        self.dirlist_button.grid(row=1,column=0, padx=5)
         
         # Sensor readings display notebook (tabbed interface)
         self.readings_frame = ttk.LabelFrame(root, text="Lecturas")
@@ -303,6 +280,27 @@ class TerminalMicroPython:
         for btn in self.commands_frame.winfo_children():
             btn["state"] = "normal"
 
+        # start status refresh thread
+        self._parseStats() # it loops itself
+
+    def _parseStats(self):
+        allStats = main.getPhysicalStatus()
+        self.temp_var.set('{:.2f} ºC'.format(allStats[0][0]))
+        self.humidity_var.set('{:.2f} %'.format(allStats[0][1]))
+
+        self.voltage_var.set('{:.2f} V'.format(float(allStats[1][0])))
+        self.current_var.set('{:.2f} mA'.format(float(allStats[1][1])))
+        self.power_var.set('{:.2f} mW'.format(float(allStats[1][0] * allStats[1][1])))
+
+        self.gyro_x_var.set('{:.2f} º/s'.format(allStats[2][0]))
+        self.gyro_y_var.set('{:.2f} º/s'.format(allStats[2][1]))
+        self.gyro_z_var.set('{:.2f} º/s'.format(allStats[2][2]))
+
+        self.rssi_var.set('{} dBm'.format(allStats[3][0]))
+
+        self.led_button.config(text=f'{('Encender', 'Apagar')[allStats[4][0]]} LED')
+        threading.Timer(.5, self._parseStats).start()
+
     def connect_serial(self):
         """Abrir conexión serial"""
         port=self.port_combobox.get()
@@ -327,59 +325,12 @@ class TerminalMicroPython:
             messagebox.showerror("Error", f"Fallo la conexión: \n{str(e)}")
             return False
 
-    def disconnect_serial(self):
-        """Cerrar conexión serial"""
-        if self.serial_port and self.serial_port.is_open:
-            self.running=False
-            self.serial_port.close()
-            self.print_output("\nDesconectado\n")
-
-    def reset_micropython(self):
-        """Manda comando de CTRL+D"""
-        if not (self.serial_port and self.serial_port.is_open):
-            messagebox.showerror("Error", "No conectado a puerto serial!")
-            return
-
-        try:
-            self.serial_port.write(b'\x04')
-            
-            self.print_output("\n>> Soft reset utilizado (CTRL+D)\n")
-        except Exception as e:
-            self.print_output(f"\nError en el reset: {str(e)}\n")
-
     def toggle_led(self):
-        """Cambia el estado del led con comandos LED.ON y LED.OFF"""
+        """Cambia el estado del led"""
+        main.commands.handleRequestLed(self.rname_var.get())
 
-        if not (self.serial_port and self.serial_port.is_open):
-            messagebox.showerror("Error", "No conectado a puerto serial!")
-            return
-
-        try:
-            if self.led_state:
-                command= ".LEDOFF"
-                self.led_button["text"] = "LED apagado"
-                
-            else:
-                command= ".LEDON"
-                self.led_button["text"] = "LED encendido"
-
-            self.serial_port.write((command+"\r\n").encode())
-            self.print_output(f">>> {command}\n")
-            self.led_state= not self.led_state
-                
-        except Exception as e:
-            self.print_output(f"\nNo se pudo cambiar el estado del LED: {str(e)}\n")
-
-    def read_serial_data(self):
-        """Thread: Continuously read data from MicroPython"""
-        while self.running and self.serial_port and self.serial_port.is_open:
-            try:
-                if self.serial_port.in_waiting:
-                    data = self.serial_port.readline().decode("utf-8", errors="replace")
-                    self.output_queue.put(data)
-            except Exception as e:
-                self.output_queue.put(f"\nSerial error: {str(e)}\n")
-                break
+    def req_ls(self):
+        main.commands.commandReqFiles(self.rname_var.get())
 
     def send_predefined_command(self, command):
         """Manda algun comando predefinido"""
@@ -410,77 +361,15 @@ class TerminalMicroPython:
                 
         self.root.after(100, self.poll_serial_output)
 
-    def parse_temperature_data(self, data):
-        """Extract temperature and humidity values from the response"""
-        try:
-            match = re.search(r"Temperatura:\s*([\d.]+)\s*°C\s*\|\s*Humedad:\s*([\d.]+)\s*%", data)
-            if match:
-                temp = match.group(1)
-                humidity = match.group(2)
-                self.temp_var.set(f"{temp} °C")
-                self.humidity_var.set(f"{humidity} %")
-        except Exception as e:
-            print(f"Error parsing temperature data: {e}")
-    
-    def parse_rssi_data(self, data):
-        """Extract RSSI value from the response"""
-        try:
-            match = re.search(r"RSSI:\s*(-?\d+)dBm", data)
-            if match:
-                rssi = match.group(1)
-                self.rssi_var.set(f"{rssi} dBm")
-        except Exception as e:
-            print(f"Error parsing RSSI data: {e}")
-    
-    def parse_gyro_data(self, data):
-        """Extraer y partir los valores del giroscopio"""
-        try:
-            match = re.search(r"GYR -> X:\s*(-?[\d.]+)\s*°/s,\s*Y:\s*(-?[\d.]+)\s*°/s,\s*Z:\s*(-?[\d.]+)\s*°/s", data)
-            if match:
-                x = match.group(1)
-                y = match.group(2)
-                z = match.group(3)
-                self.gyro_x_var.set(f"{x} °/s")
-                self.gyro_y_var.set(f"{y} °/s")
-                self.gyro_z_var.set(f"{z} °/s")
-        except Exception as e:
-            print(f"Error parsing gyroscope data: {e}")
-    
-    def parse_power_data(self, data):
-        """Extraer y partir valores de potencia"""
-        try:
-            if "Voltaje" in data:
-                match = re.search(r"Voltaje\s*\(V\):\s*([\d.-]+)\s*V", data)
-                if match:
-                    self.voltage_var.set(f"{match.group(1)} V")
-            elif "Corriente" in data:
-                match = re.search(r"Corriente\s*\(I\):\s*([\d.-]+)\s*mA", data)
-                if match:
-                    self.current_var.set(f"{match.group(1)} mA")
-            elif "Potencia" in data:
-                match = re.search(r"Potencia\s*\(W\):\s*([\d.-]+)\s*W", data)
-                if match:
-                    self.power_var.set(f"{match.group(1)} W")
-        except Exception as e:
-            print(f"Error parsing power data: {e}")
-    
     def send_to_micropython(self, event=None):
-        """Mandar comando a micropython"""
-        if not (self.serial_port and self.serial_port.is_open):
-            messagebox.showerror("Error", "Not connected to a serial port!")
-            return
-        
         command = self.command_entry.get()
         self.command_entry.delete(0, tk.END)
-        
+
         if not command.strip():
             return
-        
-        try:
-            self.serial_port.write((command + "\r\n").encode())
-            self.print_output(f">>> {command}\n")
-        except Exception as e:
-            self.print_output(f"\nFailed to send: {str(e)}\n")
+
+        exec(command)
+        self.print_output(f">>> {command}\n")
     
     def print_output(self, text):
         """Imprime texto a la terminal"""
@@ -490,10 +379,7 @@ class TerminalMicroPython:
         self.output_text.see(tk.END)
 
     def recibir_imagen_desde_esp32(self):
-        self.toggle_connection()
-        request.request_image_and_save_b64()
-        request.decode_with_terminal()
-        self.toggle_connection()
+        main.commands.handleRequestFile(self.rname_var.get(), self.remote_entry.get())
         return
 
 if __name__=="__main__":
