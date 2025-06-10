@@ -3,15 +3,20 @@
 #esp.osdebug(None)
 
 from commander import Commander
-from machine import Timer
+from machine import SDCard, Timer
 from peer_tcp import Peer
 from sock import Socker
 import micropython
 import network_interface as ni
+import os
 
 micropython.alloc_emergency_exception_buf(100) # reserve memory for call back error stacks
 
 nif = ni.Nif()
+sd = SDCard(slot=2)
+vfs = os.VfsFat(sd)
+os.mount(vfs, "/sd") #Montar sd
+
 nif.setup_sta()
 
 socket = Socker()

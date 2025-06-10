@@ -5,7 +5,7 @@ import ntptime
 import json
 import logger as logs
 
-log = logs.Logger('WiFi', 'wifi.log')
+log = logs.Logger('WiFi')
 
 
 class Nif:

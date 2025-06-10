@@ -177,4 +177,4 @@ while True:
     except Exception as e:
         log_message(f"Error al enviar mensaje: {e}")
         connection_active = False
-        conn = None
+        conn = Nonegugguggugguggugguggugguggugguggug
