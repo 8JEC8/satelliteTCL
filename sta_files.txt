@@ -1,7 +1,7 @@
 ./station/boot.py
 ./station/keys.json
-./sockets/sock.py
-./sockets/peer_tcp.py
+./lib/sock.py
+./lib/peer_tcp.py
 ./lib/commander.py
 ./lib/network_interface.py
 ./lib/logger.py
