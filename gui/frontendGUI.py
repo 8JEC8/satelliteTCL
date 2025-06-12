@@ -12,7 +12,6 @@ import subprocess
 import os
 import time
 import base64
-import request
 
 class TerminalMicroPython:
     def __init__(self, root):
